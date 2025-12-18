@@ -1,0 +1,7 @@
+{
+  "name": "Einstein's Mathematical Universe",
+  "description": "An immersive journey through the history of mathematics with Albert Einstein.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
