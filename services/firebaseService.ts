@@ -8,7 +8,7 @@ import { getDatabase, ref, get, set, Database } from "firebase/database";
  */
 const getFirebaseConfig = () => {
   return {
-    apiKey: process.env.FIREBASE_API_KEY || process.env.API_KEY, // Fallback to generic API_KEY if available
+    apiKey: process.env.FIREBASE_API_KEY || process.env.API_KEY,
     authDomain: process.env.FIREBASE_AUTH_DOMAIN,
     databaseURL: process.env.FIREBASE_DATABASE_URL,
     projectId: process.env.FIREBASE_PROJECT_ID,
@@ -28,9 +28,8 @@ const getDB = (): Database | null => {
 
   const config = getFirebaseConfig();
 
-  // Project ID is strictly required by Firebase
+  // Project ID is strictly required by Firebase to avoid fatal init errors
   if (!config.projectId) {
-    console.warn("Firebase Caching Disabled: FIREBASE_PROJECT_ID is missing from environment.");
     return null;
   }
 
@@ -42,9 +41,8 @@ const getDB = (): Database | null => {
       app = getApp();
     }
 
-    // Realtime Database requires a URL if it's not the default us-central1 location,
-    // or if it can't be inferred. We pass the config to getDatabase to be safe.
-    dbInstance = getDatabase(app, config.databaseURL);
+    // Pass databaseURL explicitly if available to ensure correct routing
+    dbInstance = getDatabase(app, config.databaseURL || undefined);
     return dbInstance;
   } catch (error) {
     console.error("Firebase initialization failed:", error);
@@ -58,9 +56,6 @@ export interface CachedChapter {
   label: string;
 }
 
-/**
- * Sanitizes a string to be used as a Firebase key (no ., $, #, [, ], or /)
- */
 const sanitizeKey = (key: string): string => {
   return key.replace(/[.$#[\]/]/g, "_").trim();
 };
@@ -78,7 +73,6 @@ export const getCachedChapter = async (label: string): Promise<CachedChapter | n
     }
     return null;
   } catch (error) {
-    console.error("Firebase fetch error:", error);
     return null;
   }
 };

@@ -114,13 +114,21 @@ const App: React.FC = () => {
     processAudioQueue();
   };
 
-  const handleSendMessage = async (text: string, cacheLabel?: string) => {
+  const handleSendMessage = async (text: string, cacheLabel?: string, shouldClear: boolean = true) => {
     if (!text.trim() || isStreaming) return;
     stopAudio();
     lastTriggeredPromptRef.current = null;
     
+    // Clear screen if it's a new chapter or explicit request
     const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', text: text, timestamp: new Date() };
-    setMessages(prev => [...prev, userMsg]);
+    const currentHistory = shouldClear ? [] : messages;
+    
+    if (shouldClear) {
+      setMessages([userMsg]);
+    } else {
+      setMessages(prev => [...prev, userMsg]);
+    }
+    
     setInput('');
     setSuggestions([]);
     setIsStreaming(true);
@@ -131,11 +139,8 @@ const App: React.FC = () => {
 
     try {
         let accumulatedText = '';
-        
-        // 1. Check local chapter content first
         const preloadedContent = CHAPTER_CONTENT[text];
         
-        // 2. If not local, check Firebase cache if a label was provided
         let cachedData = null;
         if (!preloadedContent && cacheLabel) {
             cachedData = await getCachedChapter(cacheLabel);
@@ -147,7 +152,6 @@ const App: React.FC = () => {
             
             handleImageScanning(contentToUse);
             
-            // Artificial stream for smooth UI
             for (let i = 0; i < contentToUse.length; i += 30) {
                 if (activeMessageIdRef.current !== modelMsgId) break;
                 accumulatedText += contentToUse.slice(i, i + 30);
@@ -155,8 +159,7 @@ const App: React.FC = () => {
                 await new Promise(r => setTimeout(r, 15));
             }
         } else {
-            // 3. Fallback to Gemini AI
-            const stream = await sendMessageStream(text, messages); 
+            const stream = await sendMessageStream(text, currentHistory); 
             for await (const chunk of stream) {
                 if (activeMessageIdRef.current !== modelMsgId) break;
                 accumulatedText += chunk.text || '';
@@ -164,9 +167,7 @@ const App: React.FC = () => {
                 handleImageScanning(accumulatedText);
             }
 
-            // 4. Save to cache after Gemini responds
             if (cacheLabel && activeMessageIdRef.current === modelMsgId) {
-                // Ensure image generation is complete or at least triggered
                 saveChapterToCache(cacheLabel, accumulatedText, currentImage);
             }
         }
@@ -225,8 +226,16 @@ const App: React.FC = () => {
           next.push({ label: `Next: ${nextSec.label}`, text: nextSec.prompt });
       }
 
-      next.push({ label: 'Explain the Math', text: "Professor, could you please explain the mathematical logic behind this?" });
-      next.push({ label: 'New Visualization', text: "Can you provide a new scientific visualization of this concept? Please include a new [IMAGE: ...] tag." });
+      // Context-aware "Explain the Math" prompts
+      let mathPrompt = "Professor, could you please explain the mathematical logic behind our current subject?";
+      if (currentCompleted === 1) mathPrompt = "Professor, please explain the mathematical logic behind Euclidean geometry and his axioms.";
+      else if (currentCompleted === 2) mathPrompt = "Professor, can you explain the fundamental mathematical logic of Calculus—limits, derivatives, and integrals?";
+      else if (currentCompleted === 3) mathPrompt = "Professor, explain the mathematical logic of the Age of Analysis and probability theory.";
+      else if (currentCompleted === 4) mathPrompt = "Professor, please explain the complex math of curved spacetime and quantum uncertainty.";
+      else if (currentCompleted === 5) mathPrompt = "Professor, what is the mathematical logic we are using to pursue a Unified Theory of everything?";
+
+      next.push({ label: 'Explain the Math', text: mathPrompt });
+      next.push({ label: 'New Visualization', text: "Can you provide a new scientific visualization? [IMAGE: ...]" });
       next.push({ label: 'Timeline', text: "OPEN_CHAPTER_MENU" });
       setSuggestions(next);
   };
@@ -241,7 +250,7 @@ const App: React.FC = () => {
              <h1 className="text-6xl md:text-8xl font-bold mb-8 tracking-tighter text-white font-['Playfair_Display'] drop-shadow-2xl">Einstein's Universe</h1>
              <p className="text-xl md:text-3xl mb-12 leading-relaxed italic opacity-90 font-['Fira_Code']">"Imagination is more important than knowledge."</p>
              <button 
-               onClick={() => { setHasStarted(true); handleSendMessage('Start', 'Introduction'); }}
+               onClick={() => { setHasStarted(true); handleSendMessage('Start', 'Introduction', true); }}
                className="px-20 py-6 bg-indigo-900 hover:bg-indigo-800 text-white font-bold rounded-2xl text-2xl transition-all transform hover:scale-105 shadow-[0_20px_50px_rgba(49,46,129,0.3)] border border-indigo-500/50 group"
              >
                Enter the Lab
@@ -290,7 +299,6 @@ const App: React.FC = () => {
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
         <div className="w-full md:w-[55%] bg-black flex flex-col items-center justify-center relative shadow-[inset_-20px_0_60px_rgba(0,0,0,0.9)] z-10 transition-all duration-700">
           <div className="absolute inset-0 opacity-10 pointer-events-none overflow-hidden chalkboard-bg"></div>
-          
           <div className="relative w-[92%] h-[85%] border border-zinc-800/50 rounded-xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)] bg-zinc-900 group">
              {isGeneratingImage && (
                <div className="absolute inset-0 bg-zinc-950/80 z-20 flex items-center justify-center backdrop-blur-md">
@@ -301,7 +309,6 @@ const App: React.FC = () => {
                </div>
              )}
              <img src={currentImage} alt="Scientific Visualization" className="w-full h-full object-cover transition-all duration-1000 transform group-hover:scale-105" />
-             
              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-zinc-950 via-zinc-950/70 to-transparent p-10 pointer-events-none">
                 <div className="flex items-center space-x-2 mb-2">
                     <span className="h-px w-6 bg-indigo-500"></span>
@@ -315,7 +322,6 @@ const App: React.FC = () => {
         <div className="w-full md:w-[45%] flex flex-col bg-zinc-900 relative border-l border-zinc-800">
           <ChatInterface messages={messages} isTyping={isStreaming} />
           
-          {/* POPUP MODAL FOR CHAPTERS */}
           {isMenuOpen && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-6 animate-in fade-in duration-300" onClick={() => setIsMenuOpen(false)}>
               <div 
@@ -323,7 +329,6 @@ const App: React.FC = () => {
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-transparent via-indigo-500 to-transparent"></div>
-                
                 <div className="p-8 border-b border-zinc-800 flex justify-between items-start">
                   <div>
                     <h2 className="text-3xl font-bold text-white font-['Playfair_Display'] leading-none">The Mathematical Journey</h2>
@@ -342,7 +347,7 @@ const App: React.FC = () => {
                       key={sec.id}
                       onClick={() => {
                           if (sec.id === 'stop') stopAudio();
-                          else handleSendMessage(sec.prompt, sec.label);
+                          else handleSendMessage(sec.prompt, sec.label, true);
                           setIsMenuOpen(false);
                       }}
                       className={`w-full text-left p-6 border transition-all rounded-2xl group relative overflow-hidden flex flex-col justify-center ${
@@ -357,17 +362,8 @@ const App: React.FC = () => {
                       <div className="text-[10px] opacity-40 uppercase tracking-[0.2em] font-mono mt-2">
                         {sec.prompt === 'STOP' ? 'End Transmission' : `Jump to ${sec.label}`}
                       </div>
-                      <div className="absolute right-6 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
-                      </div>
                     </button>
                   ))}
-                </div>
-                
-                <div className="p-6 bg-zinc-950 border-t border-zinc-800 text-center">
-                  <p className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest">Select a waypoint to alter the flow of time</p>
                 </div>
               </div>
             </div>
@@ -385,13 +381,13 @@ const App: React.FC = () => {
                         if (s.text === "OPEN_CHAPTER_MENU") {
                           setIsMenuOpen(true);
                         } else {
-                          // Pass the suggestion label as the cache key
-                          handleSendMessage(s.text, s.label);
+                          // Suggestions also clear the screen for focused topics
+                          handleSendMessage(s.text, s.label, true);
                         }
                       }}
                       className={`px-4 py-2 text-[11px] font-bold rounded-lg transition-all border font-mono tracking-tight ${
                         isNextChapter 
-                          ? 'bg-indigo-900 border-indigo-400 text-white hover:bg-indigo-800 shadow-[0_5px_15px_rgba(79,70,229,0.2)]' 
+                          ? 'bg-indigo-900 border-indigo-400 text-white hover:bg-indigo-800' 
                           : 'bg-zinc-800 border-zinc-700 hover:bg-zinc-700 text-zinc-400'
                       }`}
                     >
@@ -401,7 +397,7 @@ const App: React.FC = () => {
                 })}
               </div>
             )}
-            <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(input); }} className="flex space-x-2">
+            <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(input, undefined, false); }} className="flex space-x-2">
               <input 
                 type="text"
                 value={input}
@@ -416,7 +412,7 @@ const App: React.FC = () => {
                 disabled={isStreaming || messages.filter(m => m.role === 'model').length === 0}
                 className={`px-6 py-4 font-bold rounded-xl transition-all border font-mono text-xs flex items-center justify-center whitespace-nowrap ${
                   audioState !== 'idle' 
-                    ? 'bg-indigo-600 text-white border-indigo-400 shadow-[0_0_20px_rgba(79,70,229,0.4)]' 
+                    ? 'bg-indigo-600 text-white border-indigo-400' 
                     : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
                 }`}
               >
@@ -437,11 +433,6 @@ const App: React.FC = () => {
           </div>
         </div>
       </main>
-      
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 3px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(79, 70, 229, 0.2); border-radius: 10px; }
-      `}</style>
     </div>
   );
 };

@@ -65,31 +65,35 @@ let audioCtx: AudioContext | null = null;
 
 export const warmupAudioContext = () => {
   if (!audioCtx) {
-    audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
   }
   if (audioCtx.state === 'suspended') {
     audioCtx.resume();
   }
 };
 
-export const cancelAllPendingTTS = () => {};
+export const cancelAllPendingTTS = () => {
+  // Logic to signal cancellation if needed, usually handled by stopping the source in App.tsx
+};
 
 export const generateSpeech = async (text: string): Promise<AudioBuffer | null> => {
+  if (!text || text.trim().length < 2) return null;
+  
   const client = getAI();
   warmupAudioContext();
   
   try {
-    // Adding persona instruction to the TTS prompt to influence the accent and tone.
-    const personaPrompt = `In a gentle, scholarly Albert Einstein persona with a slight German accent: ${text}`;
+    // Simplified prompt to reduce 500 errors and improve stability
+    const cleanText = text.replace(/[*#_]/g, '').trim();
     
     const response = await client.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text: personaPrompt }] }],
+      contents: [{ parts: [{ text: `Albert Einstein speaks: ${cleanText}` }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
           voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: 'Charon' }, // A wise, older, resonant voice
+            prebuiltVoiceConfig: { voiceName: 'Puck' }, // Resonant, stable scholarly voice
           },
         },
       },
@@ -100,7 +104,7 @@ export const generateSpeech = async (text: string): Promise<AudioBuffer | null> 
 
     return await decodeAudioData(decode(base64Audio), audioCtx, 24000, 1);
   } catch (error) {
-    console.error("TTS failed:", error);
+    console.error("TTS generation failed:", error);
     return null;
   }
 };
