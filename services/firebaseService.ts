@@ -2,10 +2,6 @@
 import { initializeApp, getApp, getApps, FirebaseApp } from "firebase/app";
 import { getDatabase, ref, get, set, Database } from "firebase/database";
 
-/**
- * Lazy-loaded Firebase configuration. 
- * We check process.env for the required keys.
- */
 const getFirebaseConfig = () => {
   return {
     apiKey: process.env.FIREBASE_API_KEY || process.env.API_KEY,
@@ -20,18 +16,10 @@ const getFirebaseConfig = () => {
 
 let dbInstance: Database | null = null;
 
-/**
- * Initializes Firebase App and Database only if necessary and if config is valid.
- */
 const getDB = (): Database | null => {
   if (dbInstance) return dbInstance;
-
   const config = getFirebaseConfig();
-
-  // Project ID is strictly required by Firebase to avoid fatal init errors
-  if (!config.projectId) {
-    return null;
-  }
+  if (!config.projectId) return null;
 
   try {
     let app: FirebaseApp;
@@ -40,8 +28,6 @@ const getDB = (): Database | null => {
     } else {
       app = getApp();
     }
-
-    // Pass databaseURL explicitly if available to ensure correct routing
     dbInstance = getDatabase(app, config.databaseURL || undefined);
     return dbInstance;
   } catch (error) {
@@ -57,21 +43,21 @@ export interface CachedChapter {
 }
 
 const sanitizeKey = (key: string): string => {
-  return key.replace(/[.$#[\]/]/g, "_").trim();
+  // Firebase keys cannot contain certain characters
+  return key.replace(/[.$#[\]/]/g, "_").substring(0, 120).trim();
 };
 
+/**
+ * Chapters Cache
+ */
 export const getCachedChapter = async (label: string): Promise<CachedChapter | null> => {
   const db = getDB();
   if (!db) return null;
-
   try {
     const key = sanitizeKey(label);
     const chapterRef = ref(db, `chapters/${key}`);
     const snapshot = await get(chapterRef);
-    if (snapshot.exists()) {
-      return snapshot.val() as CachedChapter;
-    }
-    return null;
+    return snapshot.exists() ? snapshot.val() as CachedChapter : null;
   } catch (error) {
     return null;
   }
@@ -80,17 +66,39 @@ export const getCachedChapter = async (label: string): Promise<CachedChapter | n
 export const saveChapterToCache = async (label: string, text: string, image: string): Promise<void> => {
   const db = getDB();
   if (!db) return;
-
   try {
     const key = sanitizeKey(label);
     const chapterRef = ref(db, `chapters/${key}`);
-    await set(chapterRef, {
-      text,
-      image,
-      label,
-      timestamp: Date.now()
-    });
+    await set(chapterRef, { text, image, label, timestamp: Date.now() });
   } catch (error) {
-    console.error("Firebase save error:", error);
+    console.error("Firebase chapter save error:", error);
+  }
+};
+
+/**
+ * Global Image Prompt Cache ("Blobs")
+ */
+export const getCachedImage = async (prompt: string): Promise<string | null> => {
+  const db = getDB();
+  if (!db) return null;
+  try {
+    const key = sanitizeKey(prompt);
+    const imageRef = ref(db, `image_vault/${key}`);
+    const snapshot = await get(imageRef);
+    return snapshot.exists() ? snapshot.val().data : null;
+  } catch (error) {
+    return null;
+  }
+};
+
+export const saveCachedImage = async (prompt: string, base64: string): Promise<void> => {
+  const db = getDB();
+  if (!db) return;
+  try {
+    const key = sanitizeKey(prompt);
+    const imageRef = ref(db, `image_vault/${key}`);
+    await set(imageRef, { data: base64, timestamp: Date.now() });
+  } catch (error) {
+    console.error("Firebase image vault save error:", error);
   }
 };

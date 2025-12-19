@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChatMessage, Suggestion } from './types';
 import { sendMessageStream, generateScientificImage, generateSpeech, playAudioBuffer, warmupAudioContext, cancelAllPendingTTS } from './services/geminiService';
-import { getCachedChapter, saveChapterToCache } from './services/firebaseService';
+import { getCachedChapter, saveChapterToCache, getCachedImage, saveCachedImage } from './services/firebaseService';
 import { INITIAL_IMAGE } from './constants';
 import { CHAPTER_CONTENT } from './data/chapters';
 import ChatInterface from './components/ChatInterface';
@@ -37,14 +37,42 @@ const App: React.FC = () => {
   const activeSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const sessionIDRef = useRef(0);
   const imageCacheRef = useRef<Map<string, string>>(new Map());
+  const blobUrlCacheRef = useRef<Map<string, string>>(new Map());
   const lastTriggeredPromptRef = useRef<string | null>(null);
   const activeMessageIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const unlock = () => warmupAudioContext();
     window.addEventListener('click', unlock);
-    return () => window.removeEventListener('click', unlock);
+    return () => {
+      window.removeEventListener('click', unlock);
+      // Clean up blob URLs
+      blobUrlCacheRef.current.forEach(url => URL.revokeObjectURL(url));
+    };
   }, []);
+
+  // Helper to convert base64 to Blob URL
+  const getBlobUrlFromBase64 = (base64: string): string => {
+    if (base64.startsWith('blob:')) return base64;
+    if (blobUrlCacheRef.current.has(base64)) return blobUrlCacheRef.current.get(base64)!;
+    
+    try {
+      const parts = base64.split(';base64,');
+      const contentType = parts[0].split(':')[1];
+      const raw = window.atob(parts[1]);
+      const rawLength = raw.length;
+      const uInt8Array = new Uint8Array(rawLength);
+      for (let i = 0; i < rawLength; ++i) {
+        uInt8Array[i] = raw.charCodeAt(i);
+      }
+      const blob = new Blob([uInt8Array], { type: contentType });
+      const url = URL.createObjectURL(blob);
+      blobUrlCacheRef.current.set(base64, url);
+      return url;
+    } catch (e) {
+      return base64; // Fallback to raw string if conversion fails
+    }
+  };
 
   const stopAudio = () => {
     sessionIDRef.current++;
@@ -119,7 +147,6 @@ const App: React.FC = () => {
     stopAudio();
     lastTriggeredPromptRef.current = null;
     
-    // Clear screen if it's a new chapter or explicit request
     const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', text: text, timestamp: new Date() };
     const currentHistory = shouldClear ? [] : messages;
     
@@ -148,7 +175,7 @@ const App: React.FC = () => {
 
         if (preloadedContent || cachedData) {
             const contentToUse = preloadedContent || cachedData!.text;
-            if (cachedData) setCurrentImage(cachedData.image);
+            if (cachedData) setCurrentImage(getBlobUrlFromBase64(cachedData.image));
             
             handleImageScanning(contentToUse);
             
@@ -168,7 +195,9 @@ const App: React.FC = () => {
             }
 
             if (cacheLabel && activeMessageIdRef.current === modelMsgId) {
-                saveChapterToCache(cacheLabel, accumulatedText, currentImage);
+                // Find current image in raw base64 form for storage
+                const rawBase64 = [...blobUrlCacheRef.current.entries()].find(([raw, url]) => url === currentImage)?.[0] || currentImage;
+                saveChapterToCache(cacheLabel, accumulatedText, rawBase64);
             }
         }
         
@@ -198,7 +227,7 @@ const App: React.FC = () => {
         setCurrentTopicLabel(displayLabel);
         
         if (imageCacheRef.current.has(prompt)) {
-          setCurrentImage(imageCacheRef.current.get(prompt)!);
+          setCurrentImage(getBlobUrlFromBase64(imageCacheRef.current.get(prompt)!));
         } else {
           triggerImageGeneration(prompt);
         }
@@ -209,10 +238,21 @@ const App: React.FC = () => {
   const triggerImageGeneration = async (prompt: string) => {
     setIsGeneratingImage(true);
     try {
+      // 1. Check Global Firebase Vault first
+      const cachedVaultImage = await getCachedImage(prompt);
+      if (cachedVaultImage) {
+        imageCacheRef.current.set(prompt, cachedVaultImage);
+        setCurrentImage(getBlobUrlFromBase64(cachedVaultImage));
+        return;
+      }
+
+      // 2. Generate new via Gemini if not in Vault
       const base64 = await generateScientificImage(prompt);
       if (base64) {
         imageCacheRef.current.set(prompt, base64);
-        setCurrentImage(base64);
+        setCurrentImage(getBlobUrlFromBase64(base64));
+        // 3. Save to Global Vault for others
+        saveCachedImage(prompt, base64);
       }
     } finally { setIsGeneratingImage(false); }
   };
@@ -226,7 +266,6 @@ const App: React.FC = () => {
           next.push({ label: `Next: ${nextSec.label}`, text: nextSec.prompt });
       }
 
-      // Context-aware "Explain the Math" prompts
       let mathPrompt = "Professor, could you please explain the mathematical logic behind our current subject?";
       if (currentCompleted === 1) mathPrompt = "Professor, please explain the mathematical logic behind Euclidean geometry and his axioms.";
       else if (currentCompleted === 2) mathPrompt = "Professor, can you explain the fundamental mathematical logic of Calculus—limits, derivatives, and integrals?";
@@ -381,7 +420,6 @@ const App: React.FC = () => {
                         if (s.text === "OPEN_CHAPTER_MENU") {
                           setIsMenuOpen(true);
                         } else {
-                          // Suggestions also clear the screen for focused topics
                           handleSendMessage(s.text, s.label, true);
                         }
                       }}
