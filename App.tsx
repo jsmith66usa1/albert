@@ -17,7 +17,7 @@ const SECTIONS = [
   { id: 'ch5', label: 'Chapter 5: The Unified Theory', prompt: 'Start at Chapter 5: The Unified Theory', chapterNum: 5 },
 ];
 
-type AudioState = 'idle' | 'loading' | 'playing';
+type AudioState = 'idle' | 'loading' | 'playing' | 'error_quota';
 
 const App: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -46,40 +46,33 @@ const App: React.FC = () => {
     window.addEventListener('click', unlock);
     return () => {
       window.removeEventListener('click', unlock);
-      // Clean up blob URLs to prevent memory leaks
       blobUrlCacheRef.current.forEach(url => URL.revokeObjectURL(url));
     };
   }, []);
 
-  /**
-   * Memory management: Convert raw base64 to Blob URL for the <img> tag
-   */
   const getBlobUrlFromBase64 = (base64: string): string => {
     if (!base64 || base64.startsWith('blob:') || base64.startsWith('http')) return base64;
     if (blobUrlCacheRef.current.has(base64)) return blobUrlCacheRef.current.get(base64)!;
     
     try {
       const parts = base64.split(';base64,');
-      const contentType = parts[0].includes(':') ? parts[0].split(':')[1] : 'image/png';
-      const raw = window.atob(parts[1] || base64);
-      const rawLength = raw.length;
-      const uInt8Array = new Uint8Array(rawLength);
-      for (let i = 0; i < rawLength; ++i) {
+      const b64Data = parts[1] || base64;
+      const raw = window.atob(b64Data);
+      const uInt8Array = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; ++i) {
         uInt8Array[i] = raw.charCodeAt(i);
       }
-      const blob = new Blob([uInt8Array], { type: contentType });
+      const blob = new Blob([uInt8Array], { type: 'image/png' });
       const url = URL.createObjectURL(blob);
       blobUrlCacheRef.current.set(base64, url);
       return url;
     } catch (e) {
-      console.error("Blob conversion failed", e);
       return base64;
     }
   };
 
   const stopAudio = () => {
     sessionIDRef.current++;
-    cancelAllPendingTTS();
     if (activeSourceRef.current) {
       try { activeSourceRef.current.stop(); } catch(e) {}
       activeSourceRef.current = null;
@@ -93,30 +86,42 @@ const App: React.FC = () => {
     if (isPlayingQueueRef.current) return;
     isPlayingQueueRef.current = true;
     const currentSession = sessionIDRef.current;
+    
     try {
       while (audioQueueRef.current.length > 0) {
         if (sessionIDRef.current !== currentSession) break;
         setAudioState('loading');
         const nextAudioPromise = audioQueueRef.current[0];
         audioQueueRef.current.shift(); 
-        const buffer = await nextAudioPromise;
-        if (sessionIDRef.current !== currentSession) break;
-        if (buffer) {
-           setAudioState('playing');
-           const source = await playAudioBuffer(buffer);
-           if (source) {
-             activeSourceRef.current = source;
-             await new Promise<void>((resolve) => {
-               source.onended = () => resolve();
-               setTimeout(resolve, (buffer.duration * 1000) + 100);
-             });
-           }
+        
+        try {
+          const buffer = await nextAudioPromise;
+          if (sessionIDRef.current !== currentSession) break;
+          if (buffer) {
+             setAudioState('playing');
+             const source = await playAudioBuffer(buffer);
+             if (source) {
+               activeSourceRef.current = source;
+               await new Promise<void>((resolve) => {
+                 source.onended = () => resolve();
+                 setTimeout(resolve, (buffer.duration * 1000) + 100);
+               });
+             }
+          }
+        } catch (err: any) {
+          if (err.message === "QUOTA_EXCEEDED") {
+            setAudioState('error_quota');
+            setTimeout(() => {
+              if (sessionIDRef.current === currentSession) setAudioState('idle');
+            }, 5000);
+            break;
+          }
         }
       }
     } finally {
       if (sessionIDRef.current === currentSession) {
         isPlayingQueueRef.current = false;
-        if (audioQueueRef.current.length === 0) setAudioState('idle');
+        if (audioQueueRef.current.length === 0 && audioState !== 'error_quota') setAudioState('idle');
       }
     }
   };
@@ -190,19 +195,19 @@ const App: React.FC = () => {
                 if (activeMessageIdRef.current !== modelMsgId) break;
                 accumulatedText += contentToUse.slice(i, i + 30);
                 setMessages(prev => prev.map(m => m.id === modelMsgId ? { ...m, text: accumulatedText } : m));
-                await new Promise(r => setTimeout(r, 15));
+                await new Promise(r => setTimeout(r, 10));
             }
         } else {
             const stream = await sendMessageStream(text, currentHistory); 
             for await (const chunk of stream) {
                 if (activeMessageIdRef.current !== modelMsgId) break;
-                accumulatedText += chunk.text || '';
+                const chunkText = chunk.text || '';
+                accumulatedText += chunkText;
                 setMessages(prev => prev.map(m => m.id === modelMsgId ? { ...m, text: accumulatedText } : m));
                 handleImageScanning(accumulatedText);
             }
 
             if (cacheLabel && activeMessageIdRef.current === modelMsgId) {
-                // Get current image's raw base64 to store in session-cache
                 const currentRaw = [...imageCacheRef.current.values()].pop() || currentImage;
                 saveChapterToCache(cacheLabel, accumulatedText, currentRaw);
             }
@@ -216,7 +221,7 @@ const App: React.FC = () => {
             buildSuggestions(accumulatedText, currentCompleted);
         }
     } catch (e) {
-        setMessages(prev => prev.map(m => m.id === modelMsgId ? { ...m, text: "The fabric of time seems distorted. Let us try once more.", isStreaming: false } : m));
+        setMessages(prev => prev.map(m => m.id === modelMsgId ? { ...m, text: "The fabric of mathematical reality seems distorted. Let us recalibrate our observations.", isStreaming: false } : m));
     } finally {
         if (activeMessageIdRef.current === modelMsgId) setIsStreaming(false);
     }
@@ -242,14 +247,9 @@ const App: React.FC = () => {
     }
   };
 
-  /**
-   * PROMPT CACHE LOGIC: 
-   * Checks Global Vault (all users) -> Then Local Map -> Then API
-   */
   const triggerImageGeneration = async (prompt: string) => {
     setIsGeneratingImage(true);
     try {
-      // 1. Check Global Firebase Image Vault (Shared across all users)
       const globalCachedB64 = await getCachedImage(prompt);
       if (globalCachedB64) {
         imageCacheRef.current.set(prompt, globalCachedB64);
@@ -257,13 +257,10 @@ const App: React.FC = () => {
         return;
       }
 
-      // 2. Generate new if not in vault
       const newB64 = await generateScientificImage(prompt);
       if (newB64) {
         imageCacheRef.current.set(prompt, newB64);
         setCurrentImage(getBlobUrlFromBase64(newB64));
-        
-        // 3. Persist to Global Vault for all future users
         saveCachedImage(prompt, newB64);
       }
     } finally { setIsGeneratingImage(false); }
@@ -278,15 +275,14 @@ const App: React.FC = () => {
           next.push({ label: `Next: ${nextSec.label}`, text: nextSec.prompt });
       }
 
-      let mathPrompt = "Professor, could you please explain the mathematical logic behind our current subject?";
-      if (currentCompleted === 1) mathPrompt = "Professor, please explain the mathematical logic behind Euclidean geometry and his axioms.";
-      else if (currentCompleted === 2) mathPrompt = "Professor, can you explain the fundamental mathematical logic of Calculus—limits, derivatives, and integrals?";
-      else if (currentCompleted === 3) mathPrompt = "Professor, explain the mathematical logic of the Age of Analysis and probability theory.";
-      else if (currentCompleted === 4) mathPrompt = "Professor, please explain the complex math of curved spacetime and quantum uncertainty.";
-      else if (currentCompleted === 5) mathPrompt = "Professor, what is the mathematical logic we are using to pursue a Unified Theory of everything?";
+      let mathPrompt = "Professor, can you explain the mathematical logic behind this?";
+      if (currentCompleted === 1) mathPrompt = "Professor, explain the mathematical logic behind Euclidean geometry.";
+      else if (currentCompleted === 2) mathPrompt = "Professor, explain the fundamental logic of Calculus.";
+      else if (currentCompleted === 3) mathPrompt = "Professor, explain the mathematical logic of probability theory.";
+      else if (currentCompleted === 4) mathPrompt = "Professor, explain the complex math of curved spacetime.";
+      else if (currentCompleted === 5) mathPrompt = "Professor, what mathematical logic drives the search for a Unified Theory?";
 
-      next.push({ label: 'Explain the Math', text: mathPrompt });
-      next.push({ label: 'New Visualization', text: "Can you provide a new scientific visualization? [IMAGE: ...]" });
+      next.push({ label: 'Logic Insight', text: mathPrompt });
       next.push({ label: 'Timeline', text: "OPEN_CHAPTER_MENU" });
       setSuggestions(next);
   };
@@ -319,51 +315,68 @@ const App: React.FC = () => {
           <div className="w-10 h-10 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white border border-indigo-400 shadow-[0_0_15px_rgba(79,70,229,0.4)]">E=mc²</div>
           <div>
             <h1 className="text-lg md:text-xl font-bold tracking-tight font-['Playfair_Display'] text-white leading-none">Einstein's Universe</h1>
-            <p className="text-[10px] text-indigo-400 font-mono tracking-[0.3em] uppercase mt-1">Mathematical History</p>
+            <p className="text-[10px] text-indigo-400 font-mono tracking-[0.3em] uppercase mt-1">History of Mathematics</p>
           </div>
         </div>
-        <div className="flex items-center space-x-3">
+        
+        <div className="flex items-center bg-zinc-800/50 rounded-xl p-1 border border-zinc-700/50 space-x-1 shadow-inner relative">
+          {audioState === 'error_quota' && (
+            <div className="absolute -top-10 right-0 bg-amber-900/90 border border-amber-600 text-amber-100 text-[10px] px-3 py-1 rounded-lg animate-bounce shadow-lg whitespace-nowrap">
+              The Professor is currently resting his voice (Quota Exceeded)
+            </div>
+          )}
           <button 
             onClick={handleHearSpeak}
-            className={`p-2.5 rounded-lg transition-all ${audioState !== 'idle' ? 'bg-indigo-600 text-white scale-110 shadow-[0_0_20px_rgba(79,70,229,0.5)]' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 border border-zinc-700'}`}
-            title="Listen to the Professor"
+            className={`p-2.5 rounded-lg transition-all flex items-center space-x-2 ${audioState === 'playing' || audioState === 'loading' ? 'bg-indigo-600 text-white shadow-[0_0_15px_rgba(79,70,229,0.4)]' : audioState === 'error_quota' ? 'bg-amber-900 text-amber-200' : 'text-zinc-400 hover:bg-zinc-700 hover:text-white'}`}
+            title="Professor Speak"
           >
             {audioState === 'playing' ? (
                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
                </svg>
+            ) : audioState === 'loading' ? (
+               <div className="w-5 h-5 border-2 border-indigo-300 border-t-transparent rounded-full animate-spin"></div>
             ) : (
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5L6 9H2v6h4l5 4V5z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728" />
               </svg>
             )}
+            <span className="hidden sm:inline text-[10px] font-bold uppercase tracking-widest px-1">Speak</span>
           </button>
-          <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="p-2.5 bg-zinc-800 text-zinc-400 rounded-lg hover:bg-zinc-700 transition-all border border-zinc-700">
+          
+          <div className="w-px h-6 bg-zinc-700/50"></div>
+          
+          <button 
+            onClick={() => setIsMenuOpen(!isMenuOpen)} 
+            className="p-2.5 text-zinc-400 rounded-lg hover:bg-zinc-700 hover:text-white transition-all flex items-center space-x-2"
+            title="Mathematical Timeline"
+          >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16m-7 6h7" />
             </svg>
+            <span className="hidden sm:inline text-[10px] font-bold uppercase tracking-widest px-1">Timeline</span>
           </button>
         </div>
       </header>
 
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-        <div className="w-full md:w-[55%] bg-black flex flex-col items-center justify-center relative shadow-[inset_-20px_0_60px_rgba(0,0,0,0.9)] z-10 transition-all duration-700">
+        <div className="w-full md:w-[55%] bg-black flex flex-col items-center justify-center relative shadow-[inset_-20px_0_60px_rgba(0,0,0,0.9)] z-10">
           <div className="absolute inset-0 opacity-10 pointer-events-none overflow-hidden chalkboard-bg"></div>
           <div className="relative w-[92%] h-[85%] border border-zinc-800/50 rounded-xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)] bg-zinc-900 group">
              {isGeneratingImage && (
                <div className="absolute inset-0 bg-zinc-950/80 z-20 flex items-center justify-center backdrop-blur-md">
                   <div className="flex flex-col items-center">
                     <div className="w-16 h-16 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-                    <span className="mt-4 text-indigo-400 text-[10px] font-mono uppercase tracking-[0.4em] text-center px-6 animate-pulse">Calculating Visuals...</span>
+                    <span className="mt-4 text-indigo-400 text-[10px] font-mono uppercase tracking-[0.4em] text-center px-6 animate-pulse">Calculating Visual Geometry...</span>
                   </div>
                </div>
              )}
-             <img src={currentImage} alt="Historical Visualization" className="w-full h-full object-cover transition-all duration-1000 transform group-hover:scale-105" />
+             <img src={currentImage} alt="Mathematical Visualization" className="w-full h-full object-cover transition-all duration-1000 transform group-hover:scale-105" />
              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-zinc-950 via-zinc-950/70 to-transparent p-10 pointer-events-none">
                 <div className="flex items-center space-x-2 mb-2">
                     <span className="h-px w-6 bg-indigo-500"></span>
-                    <p className="text-indigo-400 text-[10px] font-mono tracking-[0.3em] uppercase font-bold">Historical Insight</p>
+                    <p className="text-indigo-400 text-[10px] font-mono tracking-[0.3em] uppercase font-bold">Scientific Insight</p>
                 </div>
                 <h3 className="text-white text-2xl md:text-3xl font-serif italic leading-tight drop-shadow-xl">{currentTopicLabel}</h3>
              </div>
@@ -379,10 +392,9 @@ const App: React.FC = () => {
                 className="bg-zinc-900 border border-zinc-800 w-full max-w-2xl max-h-[85vh] rounded-3xl shadow-[0_0_100px_rgba(0,0,0,0.9)] overflow-hidden flex flex-col animate-in zoom-in-95 duration-500 relative"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-transparent via-indigo-500 to-transparent"></div>
                 <div className="p-8 border-b border-zinc-800 flex justify-between items-start">
                   <div>
-                    <h2 className="text-3xl font-bold text-white font-['Playfair_Display'] leading-none">The Mathematical Journey</h2>
+                    <h2 className="text-3xl font-bold text-white font-['Playfair_Display']">The Mathematical Journey</h2>
                     <p className="text-zinc-500 text-xs uppercase tracking-[0.3em] mt-3 font-mono">Exploring the evolution of logic</p>
                   </div>
                   <button onClick={() => setIsMenuOpen(false)} className="p-2 text-zinc-500 hover:text-white transition-all transform hover:rotate-90">
@@ -407,11 +419,8 @@ const App: React.FC = () => {
                           : 'border-zinc-800 bg-zinc-800/40 text-zinc-100 hover:bg-indigo-950/30 hover:border-indigo-500/50 hover:scale-[1.01]'
                       }`}
                     >
-                      <div className="font-bold text-xl group-hover:text-white transition-colors">
+                      <div className="font-bold text-xl group-hover:text-white">
                         {sec.label}
-                      </div>
-                      <div className="text-[10px] opacity-40 uppercase tracking-[0.2em] font-mono mt-2">
-                        {sec.prompt === 'STOP' ? 'End Transmission' : `Jump to ${sec.label}`}
                       </div>
                     </button>
                   ))}
@@ -423,28 +432,22 @@ const App: React.FC = () => {
           <div className="p-5 bg-zinc-950 border-t border-zinc-800">
             {!isStreaming && suggestions.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-4 items-center">
-                {suggestions.map((s, i) => {
-                  const isNextChapter = s.label.startsWith('Next:');
-                  return (
+                {suggestions.map((s, i) => (
                     <button
                       key={i}
                       onClick={() => {
-                        if (s.text === "OPEN_CHAPTER_MENU") {
-                          setIsMenuOpen(true);
-                        } else {
-                          handleSendMessage(s.text, s.label, true);
-                        }
+                        if (s.text === "OPEN_CHAPTER_MENU") setIsMenuOpen(true);
+                        else handleSendMessage(s.text, s.label, true);
                       }}
                       className={`px-4 py-2 text-[11px] font-bold rounded-lg transition-all border font-mono tracking-tight ${
-                        isNextChapter 
+                        s.label.startsWith('Next:') 
                           ? 'bg-indigo-900 border-indigo-400 text-white hover:bg-indigo-800' 
                           : 'bg-zinc-800 border-zinc-700 hover:bg-zinc-700 text-zinc-400'
                       }`}
                     >
                       {s.label}
                     </button>
-                  );
-                })}
+                ))}
               </div>
             )}
             <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(input, undefined, false); }} className="flex space-x-2">
@@ -452,32 +455,16 @@ const App: React.FC = () => {
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask the Professor..."
-                className="flex-1 bg-zinc-900 border border-zinc-800 px-5 py-4 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none font-sans text-sm rounded-xl text-white placeholder-zinc-600 transition-all shadow-inner"
+                placeholder="Ask the Professor about the universe..."
+                className="flex-1 bg-zinc-900 border border-zinc-800 px-5 py-4 outline-none font-sans text-sm rounded-xl text-white placeholder-zinc-600 transition-all focus:ring-1 focus:ring-indigo-500"
                 disabled={isStreaming}
               />
               <button 
                 type="submit"
                 disabled={!input.trim() || isStreaming}
-                className="bg-indigo-600 text-white px-8 py-4 font-bold hover:bg-indigo-500 transition-all disabled:opacity-50 rounded-xl shadow-lg active:scale-95 flex items-center justify-center min-w-[100px]"
+                className="bg-indigo-600 text-white px-8 py-4 font-bold hover:bg-indigo-500 transition-all disabled:opacity-50 rounded-xl flex items-center justify-center min-w-[120px]"
               >
-                {isStreaming ? (
-                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                ) : (
-                  "Inquire"
-                )}
-              </button>
-              <button 
-                type="button"
-                onClick={handleHearSpeak}
-                disabled={isStreaming || messages.filter(m => m.role === 'model').length === 0}
-                className={`px-6 py-4 font-bold rounded-xl transition-all border font-mono text-xs flex items-center justify-center whitespace-nowrap ${
-                  audioState !== 'idle' 
-                    ? 'bg-indigo-600 text-white border-indigo-400' 
-                    : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
-                }`}
-              >
-                {audioState === 'playing' ? "Silence" : "Albert Speaks"}
+                {isStreaming ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : "Investigate"}
               </button>
             </form>
           </div>

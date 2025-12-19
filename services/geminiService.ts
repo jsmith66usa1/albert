@@ -1,32 +1,28 @@
 
-import { GoogleGenAI, Chat, Modality, Type } from "@google/genai";
+import { GoogleGenAI, Modality } from "@google/genai";
 import { EINSTEIN_SYSTEM_INSTRUCTION } from "../constants";
 import { ChatMessage } from "../types";
 
-let ai: GoogleGenAI | null = null;
-
 const getAI = () => {
-  if (!ai) {
-    if (!process.env.API_KEY) {
-      throw new Error("API_KEY environment variable is missing.");
-    }
-    ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("API_KEY environment variable is missing.");
   }
-  return ai;
+  return new GoogleGenAI({ apiKey });
 };
 
 export const sendMessageStream = async (message: string, history: ChatMessage[]) => {
-  const client = getAI();
+  const ai = getAI();
   const sdkHistory = history.map((msg) => ({
     role: msg.role,
     parts: [{ text: msg.text.replace(/\[IMAGE:.*?\]/g, '').replace(/\[.*?\]/g, '').trim() }]
   }));
 
-  const chat = client.chats.create({
-    model: 'gemini-3-flash-preview',
+  const chat = ai.chats.create({
+    model: 'gemini-3-pro-preview',
     config: {
       systemInstruction: EINSTEIN_SYSTEM_INSTRUCTION,
-      temperature: 0.8,
+      temperature: 0.65,
     },
     history: sdkHistory,
   });
@@ -35,13 +31,13 @@ export const sendMessageStream = async (message: string, history: ChatMessage[])
 };
 
 export const generateScientificImage = async (prompt: string) => {
-  const client = getAI();
+  const ai = getAI();
   try {
-    const response = await client.models.generateContent({
+    const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
-      contents: {
-        parts: [{ text: `A high quality scientific illustration of: ${prompt}. Cinematic lighting, intricate details, blackboard aesthetic mixed with cosmic nebulas, realistic yet artistic.` }]
-      },
+      contents: [{
+        parts: [{ text: `A museum-quality scientific illustration of: ${prompt}. Cinematic lighting, intricate details, chalkboard aesthetic mixed with cosmic nebulas, realistic yet artistic.` }]
+      }],
       config: {
         imageConfig: {
           aspectRatio: "1:1"
@@ -49,9 +45,11 @@ export const generateScientificImage = async (prompt: string) => {
       }
     });
 
-    for (const part of response.candidates[0].content.parts) {
-      if (part.inlineData) {
-        return `data:image/png;base64,${part.inlineData.data}`;
+    if (response.candidates?.[0]?.content?.parts) {
+      for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData) {
+          return `data:image/png;base64,${part.inlineData.data}`;
+        }
       }
     }
     return null;
@@ -72,28 +70,23 @@ export const warmupAudioContext = () => {
   }
 };
 
-export const cancelAllPendingTTS = () => {
-  // Logic to signal cancellation if needed, usually handled by stopping the source in App.tsx
-};
-
 export const generateSpeech = async (text: string): Promise<AudioBuffer | null> => {
   if (!text || text.trim().length < 2) return null;
   
-  const client = getAI();
+  const ai = getAI();
   warmupAudioContext();
   
   try {
-    // Simplified prompt to reduce 500 errors and improve stability
     const cleanText = text.replace(/[*#_]/g, '').trim();
     
-    const response = await client.models.generateContent({
+    const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text: `Albert Einstein speaks: ${cleanText}` }] }],
+      contents: [{ parts: [{ text: `Professor Albert Einstein speaking: ${cleanText}` }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
           voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: 'Puck' }, // Resonant, stable scholarly voice
+            prebuiltVoiceConfig: { voiceName: 'Puck' },
           },
         },
       },
@@ -103,7 +96,11 @@ export const generateSpeech = async (text: string): Promise<AudioBuffer | null> 
     if (!base64Audio || !audioCtx) return null;
 
     return await decodeAudioData(decode(base64Audio), audioCtx, 24000, 1);
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.message?.includes('429') || error?.message?.includes('quota')) {
+      console.warn("TTS Quota exceeded. Einstein is resting his voice.");
+      throw new Error("QUOTA_EXCEEDED");
+    }
     console.error("TTS generation failed:", error);
     return null;
   }
@@ -116,6 +113,10 @@ export const playAudioBuffer = async (buffer: AudioBuffer): Promise<AudioBufferS
   source.connect(audioCtx.destination);
   source.start();
   return source;
+};
+
+export const cancelAllPendingTTS = () => {
+  // Logic handled by sessionID tracking in App.tsx
 };
 
 function decode(base64: string) {
