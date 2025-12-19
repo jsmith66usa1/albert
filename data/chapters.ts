@@ -1,55 +1,49 @@
 
 export const CHAPTER_CONTENT: Record<string, string> = {
-    "Start": `[IMAGE: Albert Einstein sitting in a cozy study filled with books and scrolls, holding a glowing chalkboard, oil painting style, warm atmosphere]
-Ach, wunderbar! You have come to visit me in my little study. Please, ignore the mess—I seem to have misplaced my socks again, ja? I am Albert Einstein.
+    "Start": `[IMAGE: Albert Einstein standing in front of a giant chalkboard filled with complex equations, soft sunlight streaming through a window, chalk dust in the air, scientific oil painting]
+Welcome, my friend. It is a pleasure to see such curiosity in your eyes. I am Albert Einstein. They say I changed how we see the world, but I was merely standing on the shoulders of giants.
 
-You wish to explore the history of mathematics? Pure mathematics, it is in its way the poetry of logical ideas. We shall walk through time together, from the first scratches in the clay to the vast infinities of the modern mind.
-
-Shall we begin at the very beginning, with the ancient scribes of Mesopotamia and Egypt?
+Mathematics is the language in which God has written the universe. It is a beautiful, logical structure that underlies everything from the blooming of a flower to the motion of the stars. Shall we begin our journey through time to see how this language was discovered?
 
 [CHAPTER_COMPLETED: 0]
 [SECTION_COMPLETE]`,
 
-    "Start at Chapter 1: The Foundations": `[IMAGE: Ancient Babylonian scribes engraving complex cuneiform mathematical tables into wet clay tablets, desert sunrise lighting, historical oil painting]
-Nun, let us look back many thousands of years. Before there were symbols like we have today, there was the need to count the sheep and the harvest.
+    "Start at Chapter 1: Foundations": `[IMAGE: Euclid and ancient Greek mathematicians drawing perfect geometric shapes in the sand of a Mediterranean beach, sunset light, parchment sketches, historical illustration]
+We must go back to the beginning, to the cradle of geometry. Think of Euclid in Alexandria. He didn't just count things; he looked for proofs. He looked for the eternal truths of space and form.
 
-In Mesopotamia, they developed a system based on the number $60$. This is why we have $60$ minutes in an hour today—ach, the past is always with us, no? They used a placeholder, a precursor to our zero, to keep their calculations clear.
-
-Imagine the leap! From "one apple" to the abstract concept of the number $1$. It is a beautiful mystery.
+They realized that numbers weren't just for trade, but for understanding the very shape of existence. Without the Greeks' obsession with logic and circles, we would still be wandering in the dark. Do you find it fascinating that a simple triangle holds secrets that are true anywhere in the cosmos?
 
 [CHAPTER_COMPLETED: 1]
 [SECTION_COMPLETE]`,
 
-    "Start at Chapter 2: The Greek Revolution": `[IMAGE: Pythagoras and Euclid drawing intricate geometric proofs of circles and triangles in the sand of a Greek agora, marble pillars in background]
-The Greeks, they were a curious people. They did not just want to count; they wanted to prove *why* things were true. 
+    "Start at Chapter 2: The Calculus Revolution": `[IMAGE: Isaac Newton and Gottfried Leibniz in separate studies, both looking at falling objects and planetary motion, intricate diagrams of fluxions and integrals floating between them, cosmic aesthetic]
+Then came the great leap—the Calculus. Newton and Leibniz, working separately, yet both touching the same fundamental truth: how things change. 
 
-Pythagoras, he saw the harmony in the triangles. He told us that $a^2 + b^2 = c^2$. And Euclid, he built a whole world out of simple lines and points. It was the birth of logical proof. Do you see the elegance? To prove a truth that will last for all eternity!
+Calculus allowed us to track the velocity of a falling apple and the orbit of the moon with the same set of equations! It was as if a new window had been opened in the mind of humanity. Everything became dynamic, flowing. Can you imagine the thrill of realizing you could calculate the infinite?
 
 [CHAPTER_COMPLETED: 2]
 [SECTION_COMPLETE]`,
 
-    "Start at Chapter 3: The Golden Age of Algebra": `[IMAGE: Medieval Arabic scholars in a grand library surrounded by complex algebraic manuscripts and astronomical globes, House of Wisdom Baghdad]
-Ja, now we travel East. To India and the Islamic world. Here, the number zero found its true soul. Brahmagupta, he saw that zero was not just "nothing," but a number that could be calculated with.
+    "Start at Chapter 3: The Age of Analysis": `[IMAGE: A complex web of mathematical symbols and functions weaving together to form a beautiful, abstract structure, glowing with mathematical purity, artistic visualization]
+Mathematics grew more abstract and powerful. We moved beyond just physical objects into the realm of complex analysis and probability. Gauss, the prince of mathematicians, showed us the harmony in distributions.
 
-And then, Al-Khwarizmi, he gave us *Al-Jabr*—what we call Algebra today. He moved the numbers around like a dance. It allowed us to find the unknown, the "x" that hides in the shadows.
+We began to understand that math could describe things we couldn't even see—fields, waves, and the hidden structures of the mind. It became a pure art form, built on the most rigorous logic. Is not a beautiful equation as moving as a symphony by Mozart?
 
 [CHAPTER_COMPLETED: 3]
 [SECTION_COMPLETE]`,
 
-    "Start at Chapter 4: The Scientific Revolution": `[IMAGE: Isaac Newton watching an apple fall in a moonlit orchard while faint mathematical equations of calculus drift in the air]
-Ach, the world began to move so fast! Descartes saw that geometry and algebra were two sides of the same coin. He gave us the coordinates—a map for the mind.
+    "Start at Chapter 4: The Quantum Leap": `[IMAGE: A visualization of a hydrogen atom with shifting electron clouds, overlaid with the Heisenberg Uncertainty Principle equations, a mix of microscopic and macroscopic scales]
+In my own time, we realized the universe was even stranger than we had imagined. Space and time are not absolute; they are woven together in a four-dimensional fabric. 
 
-And then, Newton and Leibniz, they gave us the Calculus. It is the math of change, of motion. How does a planet move? How does the wind blow? Calculus tells us the story of the universe in flux. It is like the music of my violin, Lina—always moving, always connected.
+Then came the quantum world, where things are both particles and waves, and nothing is certain until it is observed. It challenged our very notion of reality. I must admit, I struggled with some of it—"God does not play dice with the universe"—but the math told us a story we had to listen to. How does it feel to know that reality is far more mysterious than it appears?
 
 [CHAPTER_COMPLETED: 4]
 [SECTION_COMPLETE]`,
 
-    "Start at Chapter 5: The Modern Era": `[IMAGE: A surreal digital landscape of infinite fractals and complex mathematical sets representing modern set theory and computer logic]
-Finally, we reach the modern world. Euler gave us the notation we use today, and Gauss, the "Prince of Mathematicians," found patterns in the chaos.
+    "Start at Chapter 5: The Unified Theory": `[IMAGE: A breathtaking visualization of a black hole with a glowing accretion disk, surrounded by strings of light representing the fabric of space-time, a cosmic masterpiece]
+We are still searching for the "Theory of Everything"—a single set of equations that unites the very large and the very small. I spent my final years chasing this dream, and though I did not find it, the quest continues with you.
 
-We see the birth of the computer with Turing and Lovelace, and the exploration of infinity itself with Cantor. Math is no longer just about the earth; it is about the logic of the machine and the limits of the human imagination.
-
-It has been a wunderbar journey, no?
+We are part of a grand mathematical symphony. Every discovery brings us closer to understanding the mind of the universe. What do you think is the next great mystery waiting for us to solve it with a pen and a piece of paper?
 
 [CHAPTER_COMPLETED: 5]
 [SECTION_COMPLETE]`

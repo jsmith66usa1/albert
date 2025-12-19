@@ -26,7 +26,7 @@ export const sendMessageStream = async (message: string, history: ChatMessage[])
     model: 'gemini-3-flash-preview',
     config: {
       systemInstruction: EINSTEIN_SYSTEM_INSTRUCTION,
-      temperature: 0.7,
+      temperature: 0.8,
     },
     history: sdkHistory,
   });
@@ -34,13 +34,13 @@ export const sendMessageStream = async (message: string, history: ChatMessage[])
   return await chat.sendMessageStream({ message });
 };
 
-export const generateHistoricalImage = async (prompt: string) => {
+export const generateScientificImage = async (prompt: string) => {
   const client = getAI();
   try {
     const response = await client.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
-        parts: [{ text: `A high quality historical oil painting illustration of: ${prompt}. Cinematic lighting, detailed textures, academic style.` }]
+        parts: [{ text: `A high quality scientific illustration of: ${prompt}. Cinematic lighting, intricate details, blackboard aesthetic mixed with cosmic nebulas, realistic yet artistic.` }]
       },
       config: {
         imageConfig: {
@@ -72,9 +72,7 @@ export const warmupAudioContext = () => {
   }
 };
 
-export const cancelAllPendingTTS = () => {
-  // Speech is handled via buffer playback in App.tsx
-};
+export const cancelAllPendingTTS = () => {};
 
 export const generateSpeech = async (text: string): Promise<AudioBuffer | null> => {
   const client = getAI();
@@ -88,7 +86,7 @@ export const generateSpeech = async (text: string): Promise<AudioBuffer | null> 
         responseModalities: [Modality.AUDIO],
         speechConfig: {
           voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: 'Charon' },
+            prebuiltVoiceConfig: { voiceName: 'Charon' }, // A wise, older, resonant voice
           },
         },
       },
@@ -113,7 +111,6 @@ export const playAudioBuffer = async (buffer: AudioBuffer): Promise<AudioBufferS
   return source;
 };
 
-// Helpers for binary conversion
 function decode(base64: string) {
   const binaryString = atob(base64);
   const len = binaryString.length;
