@@ -46,20 +46,22 @@ const App: React.FC = () => {
     window.addEventListener('click', unlock);
     return () => {
       window.removeEventListener('click', unlock);
-      // Clean up blob URLs
+      // Clean up blob URLs to prevent memory leaks
       blobUrlCacheRef.current.forEach(url => URL.revokeObjectURL(url));
     };
   }, []);
 
-  // Helper to convert base64 to Blob URL
+  /**
+   * Memory management: Convert raw base64 to Blob URL for the <img> tag
+   */
   const getBlobUrlFromBase64 = (base64: string): string => {
-    if (base64.startsWith('blob:')) return base64;
+    if (!base64 || base64.startsWith('blob:') || base64.startsWith('http')) return base64;
     if (blobUrlCacheRef.current.has(base64)) return blobUrlCacheRef.current.get(base64)!;
     
     try {
       const parts = base64.split(';base64,');
-      const contentType = parts[0].split(':')[1];
-      const raw = window.atob(parts[1]);
+      const contentType = parts[0].includes(':') ? parts[0].split(':')[1] : 'image/png';
+      const raw = window.atob(parts[1] || base64);
       const rawLength = raw.length;
       const uInt8Array = new Uint8Array(rawLength);
       for (let i = 0; i < rawLength; ++i) {
@@ -70,7 +72,8 @@ const App: React.FC = () => {
       blobUrlCacheRef.current.set(base64, url);
       return url;
     } catch (e) {
-      return base64; // Fallback to raw string if conversion fails
+      console.error("Blob conversion failed", e);
+      return base64;
     }
   };
 
@@ -175,7 +178,11 @@ const App: React.FC = () => {
 
         if (preloadedContent || cachedData) {
             const contentToUse = preloadedContent || cachedData!.text;
-            if (cachedData) setCurrentImage(getBlobUrlFromBase64(cachedData.image));
+            if (cachedData) {
+              const b64 = cachedData.image;
+              imageCacheRef.current.set(cacheLabel!, b64);
+              setCurrentImage(getBlobUrlFromBase64(b64));
+            }
             
             handleImageScanning(contentToUse);
             
@@ -195,9 +202,9 @@ const App: React.FC = () => {
             }
 
             if (cacheLabel && activeMessageIdRef.current === modelMsgId) {
-                // Find current image in raw base64 form for storage
-                const rawBase64 = [...blobUrlCacheRef.current.entries()].find(([raw, url]) => url === currentImage)?.[0] || currentImage;
-                saveChapterToCache(cacheLabel, accumulatedText, rawBase64);
+                // Get current image's raw base64 to store in session-cache
+                const currentRaw = [...imageCacheRef.current.values()].pop() || currentImage;
+                saveChapterToCache(cacheLabel, accumulatedText, currentRaw);
             }
         }
         
@@ -209,7 +216,7 @@ const App: React.FC = () => {
             buildSuggestions(accumulatedText, currentCompleted);
         }
     } catch (e) {
-        setMessages(prev => prev.map(m => m.id === modelMsgId ? { ...m, text: "I believe there has been a glitch in the cosmic transmission. Let us try once more.", isStreaming: false } : m));
+        setMessages(prev => prev.map(m => m.id === modelMsgId ? { ...m, text: "The fabric of time seems distorted. Let us try once more.", isStreaming: false } : m));
     } finally {
         if (activeMessageIdRef.current === modelMsgId) setIsStreaming(false);
     }
@@ -235,24 +242,29 @@ const App: React.FC = () => {
     }
   };
 
+  /**
+   * PROMPT CACHE LOGIC: 
+   * Checks Global Vault (all users) -> Then Local Map -> Then API
+   */
   const triggerImageGeneration = async (prompt: string) => {
     setIsGeneratingImage(true);
     try {
-      // 1. Check Global Firebase Vault first
-      const cachedVaultImage = await getCachedImage(prompt);
-      if (cachedVaultImage) {
-        imageCacheRef.current.set(prompt, cachedVaultImage);
-        setCurrentImage(getBlobUrlFromBase64(cachedVaultImage));
+      // 1. Check Global Firebase Image Vault (Shared across all users)
+      const globalCachedB64 = await getCachedImage(prompt);
+      if (globalCachedB64) {
+        imageCacheRef.current.set(prompt, globalCachedB64);
+        setCurrentImage(getBlobUrlFromBase64(globalCachedB64));
         return;
       }
 
-      // 2. Generate new via Gemini if not in Vault
-      const base64 = await generateScientificImage(prompt);
-      if (base64) {
-        imageCacheRef.current.set(prompt, base64);
-        setCurrentImage(getBlobUrlFromBase64(base64));
-        // 3. Save to Global Vault for others
-        saveCachedImage(prompt, base64);
+      // 2. Generate new if not in vault
+      const newB64 = await generateScientificImage(prompt);
+      if (newB64) {
+        imageCacheRef.current.set(prompt, newB64);
+        setCurrentImage(getBlobUrlFromBase64(newB64));
+        
+        // 3. Persist to Global Vault for all future users
+        saveCachedImage(prompt, newB64);
       }
     } finally { setIsGeneratingImage(false); }
   };
@@ -347,11 +359,11 @@ const App: React.FC = () => {
                   </div>
                </div>
              )}
-             <img src={currentImage} alt="Scientific Visualization" className="w-full h-full object-cover transition-all duration-1000 transform group-hover:scale-105" />
+             <img src={currentImage} alt="Historical Visualization" className="w-full h-full object-cover transition-all duration-1000 transform group-hover:scale-105" />
              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-zinc-950 via-zinc-950/70 to-transparent p-10 pointer-events-none">
                 <div className="flex items-center space-x-2 mb-2">
                     <span className="h-px w-6 bg-indigo-500"></span>
-                    <p className="text-indigo-400 text-[10px] font-mono tracking-[0.3em] uppercase font-bold">Concept Insight</p>
+                    <p className="text-indigo-400 text-[10px] font-mono tracking-[0.3em] uppercase font-bold">Historical Insight</p>
                 </div>
                 <h3 className="text-white text-2xl md:text-3xl font-serif italic leading-tight drop-shadow-xl">{currentTopicLabel}</h3>
              </div>
@@ -445,6 +457,17 @@ const App: React.FC = () => {
                 disabled={isStreaming}
               />
               <button 
+                type="submit"
+                disabled={!input.trim() || isStreaming}
+                className="bg-indigo-600 text-white px-8 py-4 font-bold hover:bg-indigo-500 transition-all disabled:opacity-50 rounded-xl shadow-lg active:scale-95 flex items-center justify-center min-w-[100px]"
+              >
+                {isStreaming ? (
+                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                ) : (
+                  "Inquire"
+                )}
+              </button>
+              <button 
                 type="button"
                 onClick={handleHearSpeak}
                 disabled={isStreaming || messages.filter(m => m.role === 'model').length === 0}
@@ -455,17 +478,6 @@ const App: React.FC = () => {
                 }`}
               >
                 {audioState === 'playing' ? "Silence" : "Albert Speaks"}
-              </button>
-              <button 
-                type="submit"
-                disabled={!input.trim() || isStreaming}
-                className="bg-indigo-600 text-white px-8 py-4 font-bold hover:bg-indigo-500 transition-all disabled:opacity-50 rounded-xl shadow-lg active:scale-95 flex items-center justify-center min-w-[100px]"
-              >
-                {isStreaming ? (
-                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                ) : (
-                  "Inquire"
-                )}
               </button>
             </form>
           </div>

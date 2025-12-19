@@ -43,19 +43,19 @@ export interface CachedChapter {
 }
 
 const sanitizeKey = (key: string): string => {
-  // Firebase keys cannot contain certain characters
+  // Firebase keys cannot contain certain characters like '.', '#', '$', '[', or ']'
   return key.replace(/[.$#[\]/]/g, "_").substring(0, 120).trim();
 };
 
 /**
- * Chapters Cache
+ * Chapters Cache (Shared session-like states)
  */
 export const getCachedChapter = async (label: string): Promise<CachedChapter | null> => {
   const db = getDB();
   if (!db) return null;
   try {
     const key = sanitizeKey(label);
-    const chapterRef = ref(db, `chapters/${key}`);
+    const chapterRef = ref(db, `math_chapters/${key}`);
     const snapshot = await get(chapterRef);
     return snapshot.exists() ? snapshot.val() as CachedChapter : null;
   } catch (error) {
@@ -68,7 +68,7 @@ export const saveChapterToCache = async (label: string, text: string, image: str
   if (!db) return;
   try {
     const key = sanitizeKey(label);
-    const chapterRef = ref(db, `chapters/${key}`);
+    const chapterRef = ref(db, `math_chapters/${key}`);
     await set(chapterRef, { text, image, label, timestamp: Date.now() });
   } catch (error) {
     console.error("Firebase chapter save error:", error);
@@ -76,14 +76,15 @@ export const saveChapterToCache = async (label: string, text: string, image: str
 };
 
 /**
- * Global Image Prompt Cache ("Blobs")
+ * Global Image Prompt Vault
+ * This is where images are permanently stored for all users.
  */
 export const getCachedImage = async (prompt: string): Promise<string | null> => {
   const db = getDB();
   if (!db) return null;
   try {
     const key = sanitizeKey(prompt);
-    const imageRef = ref(db, `image_vault/${key}`);
+    const imageRef = ref(db, `math_image_vault/${key}`);
     const snapshot = await get(imageRef);
     return snapshot.exists() ? snapshot.val().data : null;
   } catch (error) {
@@ -96,8 +97,12 @@ export const saveCachedImage = async (prompt: string, base64: string): Promise<v
   if (!db) return;
   try {
     const key = sanitizeKey(prompt);
-    const imageRef = ref(db, `image_vault/${key}`);
-    await set(imageRef, { data: base64, timestamp: Date.now() });
+    const imageRef = ref(db, `math_image_vault/${key}`);
+    // Check if it already exists to avoid redundant writes
+    const snapshot = await get(imageRef);
+    if (!snapshot.exists()) {
+      await set(imageRef, { data: base64, timestamp: Date.now() });
+    }
   } catch (error) {
     console.error("Firebase image vault save error:", error);
   }
