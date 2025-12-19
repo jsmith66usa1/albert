@@ -79,9 +79,12 @@ export const generateSpeech = async (text: string): Promise<AudioBuffer | null> 
   warmupAudioContext();
   
   try {
+    // Adding persona instruction to the TTS prompt to influence the accent and tone.
+    const personaPrompt = `In a gentle, scholarly Albert Einstein persona with a slight German accent: ${text}`;
+    
     const response = await client.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text }] }],
+      contents: [{ parts: [{ text: personaPrompt }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {

@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChatMessage, Suggestion } from './types';
 import { sendMessageStream, generateScientificImage, generateSpeech, playAudioBuffer, warmupAudioContext, cancelAllPendingTTS } from './services/geminiService';
+import { getCachedChapter, saveChapterToCache } from './services/firebaseService';
 import { INITIAL_IMAGE } from './constants';
 import { CHAPTER_CONTENT } from './data/chapters';
 import ChatInterface from './components/ChatInterface';
@@ -113,7 +114,7 @@ const App: React.FC = () => {
     processAudioQueue();
   };
 
-  const handleSendMessage = async (text: string) => {
+  const handleSendMessage = async (text: string, cacheLabel?: string) => {
     if (!text.trim() || isStreaming) return;
     stopAudio();
     lastTriggeredPromptRef.current = null;
@@ -130,23 +131,43 @@ const App: React.FC = () => {
 
     try {
         let accumulatedText = '';
+        
+        // 1. Check local chapter content first
         const preloadedContent = CHAPTER_CONTENT[text];
         
-        if (preloadedContent) {
-            handleImageScanning(preloadedContent);
-            for (let i = 0; i < preloadedContent.length; i += 30) {
+        // 2. If not local, check Firebase cache if a label was provided
+        let cachedData = null;
+        if (!preloadedContent && cacheLabel) {
+            cachedData = await getCachedChapter(cacheLabel);
+        }
+
+        if (preloadedContent || cachedData) {
+            const contentToUse = preloadedContent || cachedData!.text;
+            if (cachedData) setCurrentImage(cachedData.image);
+            
+            handleImageScanning(contentToUse);
+            
+            // Artificial stream for smooth UI
+            for (let i = 0; i < contentToUse.length; i += 30) {
                 if (activeMessageIdRef.current !== modelMsgId) break;
-                accumulatedText += preloadedContent.slice(i, i + 30);
+                accumulatedText += contentToUse.slice(i, i + 30);
                 setMessages(prev => prev.map(m => m.id === modelMsgId ? { ...m, text: accumulatedText } : m));
                 await new Promise(r => setTimeout(r, 15));
             }
         } else {
+            // 3. Fallback to Gemini AI
             const stream = await sendMessageStream(text, messages); 
             for await (const chunk of stream) {
                 if (activeMessageIdRef.current !== modelMsgId) break;
                 accumulatedText += chunk.text || '';
                 setMessages(prev => prev.map(m => m.id === modelMsgId ? { ...m, text: accumulatedText } : m));
                 handleImageScanning(accumulatedText);
+            }
+
+            // 4. Save to cache after Gemini responds
+            if (cacheLabel && activeMessageIdRef.current === modelMsgId) {
+                // Ensure image generation is complete or at least triggered
+                saveChapterToCache(cacheLabel, accumulatedText, currentImage);
             }
         }
         
@@ -220,7 +241,7 @@ const App: React.FC = () => {
              <h1 className="text-6xl md:text-8xl font-bold mb-8 tracking-tighter text-white font-['Playfair_Display'] drop-shadow-2xl">Einstein's Universe</h1>
              <p className="text-xl md:text-3xl mb-12 leading-relaxed italic opacity-90 font-['Fira_Code']">"Imagination is more important than knowledge."</p>
              <button 
-               onClick={() => { setHasStarted(true); handleSendMessage('Start'); }}
+               onClick={() => { setHasStarted(true); handleSendMessage('Start', 'Introduction'); }}
                className="px-20 py-6 bg-indigo-900 hover:bg-indigo-800 text-white font-bold rounded-2xl text-2xl transition-all transform hover:scale-105 shadow-[0_20px_50px_rgba(49,46,129,0.3)] border border-indigo-500/50 group"
              >
                Enter the Lab
@@ -294,40 +315,60 @@ const App: React.FC = () => {
         <div className="w-full md:w-[45%] flex flex-col bg-zinc-900 relative border-l border-zinc-800">
           <ChatInterface messages={messages} isTyping={isStreaming} />
           
+          {/* POPUP MODAL FOR CHAPTERS */}
           {isMenuOpen && (
-            <div className="absolute inset-0 bg-zinc-950/98 z-50 p-10 flex flex-col animate-in fade-in zoom-in-95 duration-500 overflow-hidden">
-              <div className="flex justify-between items-center mb-10">
-                <div>
-                  <h2 className="text-3xl font-bold text-white font-['Playfair_Display'] leading-none">The Mathematical Journey</h2>
-                  <p className="text-zinc-500 text-[10px] uppercase tracking-widest mt-2 font-mono">Navigate the evolution of logic</p>
-                </div>
-                <button onClick={() => setIsMenuOpen(false)} className="p-2 text-zinc-600 hover:text-white transition-all transform hover:rotate-90">
-                   <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
-                   </svg>
-                </button>
-              </div>
-              <div className="grid grid-cols-1 gap-3 overflow-y-auto pr-2 custom-scrollbar">
-                {SECTIONS.map((sec) => (
-                  <button
-                    key={sec.id}
-                    onClick={() => {
-                        if (sec.id === 'stop') stopAudio();
-                        else handleSendMessage(sec.prompt);
-                        setIsMenuOpen(false);
-                    }}
-                    className={`text-left p-6 border transition-all rounded-xl group relative overflow-hidden flex flex-col justify-center ${
-                      sec.id === 'stop' 
-                        ? 'border-rose-900/40 bg-rose-950/10 text-rose-300 hover:bg-rose-950/20' 
-                        : 'border-zinc-800 bg-zinc-900/40 text-zinc-100 hover:bg-indigo-950/20 hover:border-indigo-500/40'
-                    }`}
-                  >
-                    <div className="font-bold text-xl group-hover:text-white transition-colors">
-                      {sec.label}
-                    </div>
-                    <div className="text-[10px] opacity-40 uppercase tracking-[0.2em] font-mono mt-1">{sec.prompt === 'STOP' ? 'End Transmission' : 'Travel through time'}</div>
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-6 animate-in fade-in duration-300" onClick={() => setIsMenuOpen(false)}>
+              <div 
+                className="bg-zinc-900 border border-zinc-800 w-full max-w-2xl max-h-[85vh] rounded-3xl shadow-[0_0_100px_rgba(0,0,0,0.9)] overflow-hidden flex flex-col animate-in zoom-in-95 duration-500 relative"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-transparent via-indigo-500 to-transparent"></div>
+                
+                <div className="p-8 border-b border-zinc-800 flex justify-between items-start">
+                  <div>
+                    <h2 className="text-3xl font-bold text-white font-['Playfair_Display'] leading-none">The Mathematical Journey</h2>
+                    <p className="text-zinc-500 text-xs uppercase tracking-[0.3em] mt-3 font-mono">Exploring the evolution of logic</p>
+                  </div>
+                  <button onClick={() => setIsMenuOpen(false)} className="p-2 text-zinc-500 hover:text-white transition-all transform hover:rotate-90">
+                     <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
+                     </svg>
                   </button>
-                ))}
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-8 space-y-4 custom-scrollbar">
+                  {SECTIONS.map((sec) => (
+                    <button
+                      key={sec.id}
+                      onClick={() => {
+                          if (sec.id === 'stop') stopAudio();
+                          else handleSendMessage(sec.prompt, sec.label);
+                          setIsMenuOpen(false);
+                      }}
+                      className={`w-full text-left p-6 border transition-all rounded-2xl group relative overflow-hidden flex flex-col justify-center ${
+                        sec.id === 'stop' 
+                          ? 'border-rose-900/30 bg-rose-950/5 text-rose-300 hover:bg-rose-950/20' 
+                          : 'border-zinc-800 bg-zinc-800/40 text-zinc-100 hover:bg-indigo-950/30 hover:border-indigo-500/50 hover:scale-[1.01]'
+                      }`}
+                    >
+                      <div className="font-bold text-xl group-hover:text-white transition-colors">
+                        {sec.label}
+                      </div>
+                      <div className="text-[10px] opacity-40 uppercase tracking-[0.2em] font-mono mt-2">
+                        {sec.prompt === 'STOP' ? 'End Transmission' : `Jump to ${sec.label}`}
+                      </div>
+                      <div className="absolute right-6 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                
+                <div className="p-6 bg-zinc-950 border-t border-zinc-800 text-center">
+                  <p className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest">Select a waypoint to alter the flow of time</p>
+                </div>
               </div>
             </div>
           )}
@@ -340,10 +381,17 @@ const App: React.FC = () => {
                   return (
                     <button
                       key={i}
-                      onClick={() => s.text === "OPEN_CHAPTER_MENU" ? setIsMenuOpen(true) : handleSendMessage(s.text)}
+                      onClick={() => {
+                        if (s.text === "OPEN_CHAPTER_MENU") {
+                          setIsMenuOpen(true);
+                        } else {
+                          // Pass the suggestion label as the cache key
+                          handleSendMessage(s.text, s.label);
+                        }
+                      }}
                       className={`px-4 py-2 text-[11px] font-bold rounded-lg transition-all border font-mono tracking-tight ${
                         isNextChapter 
-                          ? 'bg-indigo-900 border-indigo-400 text-white hover:bg-indigo-800' 
+                          ? 'bg-indigo-900 border-indigo-400 text-white hover:bg-indigo-800 shadow-[0_5px_15px_rgba(79,70,229,0.2)]' 
                           : 'bg-zinc-800 border-zinc-700 hover:bg-zinc-700 text-zinc-400'
                       }`}
                     >
@@ -362,6 +410,18 @@ const App: React.FC = () => {
                 className="flex-1 bg-zinc-900 border border-zinc-800 px-5 py-4 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none font-sans text-sm rounded-xl text-white placeholder-zinc-600 transition-all shadow-inner"
                 disabled={isStreaming}
               />
+              <button 
+                type="button"
+                onClick={handleHearSpeak}
+                disabled={isStreaming || messages.filter(m => m.role === 'model').length === 0}
+                className={`px-6 py-4 font-bold rounded-xl transition-all border font-mono text-xs flex items-center justify-center whitespace-nowrap ${
+                  audioState !== 'idle' 
+                    ? 'bg-indigo-600 text-white border-indigo-400 shadow-[0_0_20px_rgba(79,70,229,0.4)]' 
+                    : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
+                }`}
+              >
+                {audioState === 'playing' ? "Silence" : "Albert Speaks"}
+              </button>
               <button 
                 type="submit"
                 disabled={!input.trim() || isStreaming}
