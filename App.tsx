@@ -11,10 +11,12 @@ const SECTIONS = [
   { id: 'stop', label: '■ Silence', prompt: 'STOP', chapterNum: -1 },
   { id: 'start', label: 'Introduction', prompt: 'Start', chapterNum: 0 },
   { id: 'ch1', label: 'Chapter 1: Foundations', prompt: 'Start at Chapter 1: Foundations', chapterNum: 1 },
-  { id: 'ch2', label: 'Chapter 2: Calculus Revolution', prompt: 'Start at Chapter 2: The Calculus Revolution', chapterNum: 2 },
-  { id: 'ch3', label: 'Chapter 3: Age of Analysis', prompt: 'Start at Chapter 3: The Age of Analysis', chapterNum: 3 },
-  { id: 'ch4', label: 'Chapter 4: The Quantum Leap', prompt: 'Start at Chapter 4: The Quantum Leap', chapterNum: 4 },
-  { id: 'ch5', label: 'Chapter 5: The Unified Theory', prompt: 'Start at Chapter 5: The Unified Theory', chapterNum: 5 },
+  { id: 'ch2', label: 'Chapter 2: Origins of Zero', prompt: 'Start at Chapter 2: The Origins of Zero', chapterNum: 2 },
+  { id: 'ch3', label: 'Chapter 3: Birth of Algebra', prompt: 'Start at Chapter 3: The Birth of Algebra', chapterNum: 3 },
+  { id: 'ch4', label: 'Chapter 4: Calculus Revolution', prompt: 'Start at Chapter 4: The Calculus Revolution', chapterNum: 4 },
+  { id: 'ch5', label: 'Chapter 5: Age of Analysis', prompt: 'Start at Chapter 5: The Age of Analysis', chapterNum: 5 },
+  { id: 'ch6', label: 'Chapter 6: The Quantum Leap', prompt: 'Start at Chapter 6: The Quantum Leap', chapterNum: 6 },
+  { id: 'ch7', label: 'Chapter 7: The Unified Theory', prompt: 'Start at Chapter 7: The Unified Theory', chapterNum: 7 },
 ];
 
 type AudioState = 'idle' | 'loading' | 'playing' | 'error_quota';
@@ -277,12 +279,14 @@ const App: React.FC = () => {
 
       let mathPrompt = "Professor, can you explain the mathematical logic behind this?";
       if (currentCompleted === 1) mathPrompt = "Professor, explain the mathematical logic behind Euclidean geometry.";
-      else if (currentCompleted === 2) mathPrompt = "Professor, explain the fundamental logic of Calculus.";
-      else if (currentCompleted === 3) mathPrompt = "Professor, explain the mathematical logic of probability theory.";
-      else if (currentCompleted === 4) mathPrompt = "Professor, explain the complex math of curved spacetime.";
-      else if (currentCompleted === 5) mathPrompt = "Professor, what mathematical logic drives the search for a Unified Theory?";
+      else if (currentCompleted === 2) mathPrompt = "Professor, explain the revolutionary concept of Zero as a number.";
+      else if (currentCompleted === 3) mathPrompt = "Professor, explain the logic of balancing equations in Algebra.";
+      else if (currentCompleted === 4) mathPrompt = "Professor, explain the fundamental logic of Calculus.";
+      else if (currentCompleted === 5) mathPrompt = "Professor, explain the mathematical logic of probability theory.";
+      else if (currentCompleted === 6) mathPrompt = "Professor, explain the complex math of curved spacetime.";
+      else if (currentCompleted === 7) mathPrompt = "Professor, what mathematical logic drives the search for a Unified Theory?";
 
-      next.push({ label: 'Logic Insight', text: mathPrompt });
+      next.push({ label: 'Topic Diagram', text: mathPrompt });
       next.push({ label: 'Timeline', text: "OPEN_CHAPTER_MENU" });
       setSuggestions(next);
   };
