@@ -11,6 +11,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, isTyping }) => 
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // MathJax rendering logic for dynamic content
+    const mathJax = (window as any).MathJax;
+    if (containerRef.current && mathJax && mathJax.typesetPromise) {
+      mathJax.typesetPromise([containerRef.current]).catch((err: any) => {
+        console.warn("MathJax typeset failed:", err);
+      });
+    }
+
     if (messages.length <= 2) {
       // New chapter or reset: snap to top
       containerRef.current?.scrollTo({ top: 0, behavior: 'auto' });
@@ -26,7 +34,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, isTyping }) => 
   return (
     <div 
       ref={containerRef}
-      className="flex-1 overflow-y-auto p-5 space-y-6 bg-zinc-950/50 relative scroll-smooth flex flex-col justify-start custom-scrollbar" 
+      className="flex-1 overflow-y-auto p-5 space-y-6 bg-zinc-950/50 relative scroll-smooth flex flex-col justify-start custom-scrollbar tex2jax_process" 
     >
       {messages.map((msg) => (
         <div
