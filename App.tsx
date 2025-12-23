@@ -7,8 +7,14 @@ import { INITIAL_IMAGE } from './constants';
 import { CHAPTER_CONTENT } from './data/chapters';
 import ChatInterface from './components/ChatInterface';
 
+const FAQ_OPTIONS = [
+  { id: 'details', label: 'More Details?', prompt: 'Can you provide more technical details about this specific topic?' },
+  { id: 'figures', label: 'Historical Figures?', prompt: "Are there other historical figures involved in this development that we haven't discussed?" },
+  { id: 'innovations', label: 'Derived Innovations?', prompt: 'What modern innovations or technologies were derived from this mathematical discovery?' },
+  { id: 'stop', label: '■ Silence Professor', prompt: 'STOP' },
+];
+
 const SECTIONS = [
-  { id: 'stop', label: '■ Silence', prompt: 'STOP', chapterNum: -1 },
   { id: 'start', label: 'Introduction', prompt: 'Start', chapterNum: 0 },
   { id: 'ch1', label: 'Chapter 1: Foundations', prompt: 'Start at Chapter 1: Foundations', chapterNum: 1 },
   { id: 'ch2', label: 'Chapter 2: Origins of Zero', prompt: 'Start at Chapter 2: The Origins of Zero', chapterNum: 2 },
@@ -20,6 +26,7 @@ const SECTIONS = [
 ];
 
 type AudioState = 'idle' | 'loading' | 'playing' | 'error_quota';
+type MenuType = 'timeline' | 'faqs';
 
 const App: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -30,6 +37,7 @@ const App: React.FC = () => {
   const [audioState, setAudioState] = useState<AudioState>('idle');
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [activeMenuType, setActiveMenuType] = useState<MenuType>('timeline');
   const [hasStarted, setHasStarted] = useState(false);
   const [completedChapterNum, setCompletedChapterNum] = useState<number>(-1);
   const [currentTopicLabel, setCurrentTopicLabel] = useState<string>("Professor Einstein");
@@ -270,7 +278,7 @@ const App: React.FC = () => {
 
   const buildSuggestions = (text: string, currentCompleted: number) => {
       const next: Suggestion[] = [];
-      const actualNextChapterIdx = currentCompleted + 2; 
+      const actualNextChapterIdx = currentCompleted + 1;
 
       if (actualNextChapterIdx < SECTIONS.length) {
           const nextSec = SECTIONS[actualNextChapterIdx];
@@ -287,8 +295,13 @@ const App: React.FC = () => {
       else if (currentCompleted === 7) mathPrompt = "Professor, what mathematical logic drives the search for a Unified Theory?";
 
       next.push({ label: 'Topic Diagram', text: mathPrompt });
-      next.push({ label: 'Timeline', text: "OPEN_CHAPTER_MENU" });
+      next.push({ label: 'FAQs', text: "OPEN_FAQ_MENU" });
       setSuggestions(next);
+  };
+
+  const openMenu = (type: MenuType) => {
+    setActiveMenuType(type);
+    setIsMenuOpen(true);
   };
 
   if (!hasStarted) {
@@ -352,7 +365,7 @@ const App: React.FC = () => {
           <div className="w-px h-6 bg-zinc-700/50"></div>
           
           <button 
-            onClick={() => setIsMenuOpen(!isMenuOpen)} 
+            onClick={() => openMenu('timeline')} 
             className="p-2.5 text-zinc-400 rounded-lg hover:bg-zinc-700 hover:text-white transition-all flex items-center space-x-2"
             title="Mathematical Timeline"
           >
@@ -398,8 +411,12 @@ const App: React.FC = () => {
               >
                 <div className="p-8 border-b border-zinc-800 flex justify-between items-start">
                   <div>
-                    <h2 className="text-3xl font-bold text-white font-['Playfair_Display']">The Mathematical Journey</h2>
-                    <p className="text-zinc-500 text-xs uppercase tracking-[0.3em] mt-3 font-mono">Exploring the evolution of logic</p>
+                    <h2 className="text-3xl font-bold text-white font-['Playfair_Display']">
+                      {activeMenuType === 'timeline' ? 'Mathematical Timeline' : "Professor's FAQs"}
+                    </h2>
+                    <p className="text-zinc-500 text-xs uppercase tracking-[0.3em] mt-3 font-mono">
+                      {activeMenuType === 'timeline' ? 'The evolution of logic' : 'Inquire further into history'}
+                    </p>
                   </div>
                   <button onClick={() => setIsMenuOpen(false)} className="p-2 text-zinc-500 hover:text-white transition-all transform hover:rotate-90">
                      <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -409,22 +426,22 @@ const App: React.FC = () => {
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-8 space-y-4 custom-scrollbar">
-                  {SECTIONS.map((sec) => (
+                  {(activeMenuType === 'timeline' ? SECTIONS : FAQ_OPTIONS).map((opt) => (
                     <button
-                      key={sec.id}
+                      key={opt.id}
                       onClick={() => {
-                          if (sec.id === 'stop') stopAudio();
-                          else handleSendMessage(sec.prompt, sec.label, true);
+                          if (opt.id === 'stop') stopAudio();
+                          else handleSendMessage(opt.prompt, (opt as any).label, activeMenuType === 'timeline');
                           setIsMenuOpen(false);
                       }}
                       className={`w-full text-left p-6 border transition-all rounded-2xl group relative overflow-hidden flex flex-col justify-center ${
-                        sec.id === 'stop' 
+                        opt.id === 'stop' 
                           ? 'border-rose-900/30 bg-rose-950/5 text-rose-300 hover:bg-rose-950/20' 
                           : 'border-zinc-800 bg-zinc-800/40 text-zinc-100 hover:bg-indigo-950/30 hover:border-indigo-500/50 hover:scale-[1.01]'
                       }`}
                     >
                       <div className="font-bold text-xl group-hover:text-white">
-                        {sec.label}
+                        {opt.label}
                       </div>
                     </button>
                   ))}
@@ -440,8 +457,8 @@ const App: React.FC = () => {
                     <button
                       key={i}
                       onClick={() => {
-                        if (s.text === "OPEN_CHAPTER_MENU") setIsMenuOpen(true);
-                        else handleSendMessage(s.text, s.label, true);
+                        if (s.text === "OPEN_FAQ_MENU") openMenu('faqs');
+                        else handleSendMessage(s.text, s.label, s.label.startsWith('Next:'));
                       }}
                       className={`px-4 py-2 text-[11px] font-bold rounded-lg transition-all border font-mono tracking-tight ${
                         s.label.startsWith('Next:') 
