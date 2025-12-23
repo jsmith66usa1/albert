@@ -9,27 +9,46 @@ interface ChatInterfaceProps {
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, isTyping }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const mathTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    // MathJax rendering logic for dynamic content
-    const mathJax = (window as any).MathJax;
-    if (containerRef.current && mathJax && mathJax.typesetPromise) {
-      mathJax.typesetPromise([containerRef.current]).catch((err: any) => {
-        console.warn("MathJax typeset failed:", err);
-      });
-    }
+    const triggerMathTypeset = () => {
+      const MathJax = (window as any).MathJax;
+      if (containerRef.current && MathJax && MathJax.typesetPromise) {
+        // We debounce math rendering slightly to avoid layout thrashing during fast streaming
+        if (mathTimerRef.current) window.clearTimeout(mathTimerRef.current);
+        
+        mathTimerRef.current = window.setTimeout(() => {
+          MathJax.typesetPromise([containerRef.current]).catch((err: any) => {
+            console.debug("MathJax pending...");
+          });
+        }, 150);
+      }
+    };
 
+    triggerMathTypeset();
+
+    // Scroll Logic
     if (messages.length <= 2) {
-      // New chapter or reset: snap to top
       containerRef.current?.scrollTo({ top: 0, behavior: 'auto' });
     } else {
-      // Ongoing conversation: smooth scroll to latest
       containerRef.current?.scrollTo({
         top: containerRef.current.scrollHeight,
         behavior: 'smooth'
       });
     }
+
+    return () => {
+      if (mathTimerRef.current) window.clearTimeout(mathTimerRef.current);
+    };
   }, [messages, isTyping]);
+
+  const cleanText = (text: string) => {
+    return text
+      .replace(/\[IMAGE:.*?\]/g, '')
+      .replace(/\[SECTION_COMPLETE\]/g, '')
+      .replace(/\[CHAPTER_COMPLETED:.*?\]/g, '');
+  };
 
   return (
     <div 
@@ -50,10 +69,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, isTyping }) => 
           >
             {msg.role === 'model' ? (
                <div className="whitespace-pre-wrap font-serif leading-relaxed text-base lg:text-lg selection:bg-indigo-900/50 text-zinc-200">
-                 {msg.text
-                   .replace(/\[IMAGE:.*?\]/g, '')
-                   .replace(/\[SECTION_COMPLETE\]/g, '')
-                   .replace(/\[CHAPTER_COMPLETED:.*?\]/g, '')} 
+                 {cleanText(msg.text)}
                </div>
             ) : (
               <div className="text-sm font-sans">{msg.text}</div>

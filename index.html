@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -10,39 +9,36 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
     
-    <!-- MathJax for high-quality math rendering -->
+    <!-- MathJax Configuration -->
     <script>
       window.MathJax = {
         tex: {
           inlineMath: [['$', '$'], ['\\(', '\\)']],
           displayMath: [['$$', '$$'], ['\\[', '\\]']],
-          processEscapes: true
+          processEscapes: true,
+          packages: {'[+]': ['base', 'ams', 'noerrors', 'noundefined']}
         },
         options: {
           ignoreHtmlClass: 'tex2jax_ignore',
           processHtmlClass: 'tex2jax_process'
         },
-        svg: {
-          fontCache: 'global'
-        }
+        loader: {load: ['[tex]/ams']},
+        startup: {
+          ready: () => {
+            MathJax.startup.defaultReady();
+            window.mathjaxReady = true;
+          }
+        },
+        svg: { fontCache: 'global' }
       };
     </script>
     <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 
     <style>
-      ::-webkit-scrollbar {
-        width: 6px;
-      }
-      ::-webkit-scrollbar-track {
-        background: #09090b; 
-      }
-      ::-webkit-scrollbar-thumb {
-        background: #27272a; 
-        border-radius: 10px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #3f3f46; 
-      }
+      ::-webkit-scrollbar { width: 6px; }
+      ::-webkit-scrollbar-track { background: #09090b; }
+      ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 10px; }
+      ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
       
       .chalkboard-bg {
         background-color: #1a1a1a;
@@ -52,38 +48,38 @@
       body {
         font-family: 'Inter', sans-serif;
         background-color: #09090b;
+        color: #f4f4f5;
       }
 
-      .math-font {
-        font-family: 'Fira Code', monospace;
-      }
+      .math-font { font-family: 'Fira Code', monospace; }
+      h1, h2, h3 { font-family: 'Playfair Display', serif; }
 
-      h1, h2, h3 {
-        font-family: 'Playfair Display', serif;
-      }
-
-      /* MathJax tweak for dark mode */
+      /* MathJax Styling for high-contrast dark mode */
       mjx-container {
         color: #e2e8f0 !important;
+        background: transparent !important;
+        margin: 1em 0 !important;
         outline: none !important;
       }
+      .mjx-chtml { font-size: 110% !important; }
     </style>
-  <script type="importmap">
+
+    <script type="importmap">
 {
   "imports": {
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "react-dom": "https://aistudiocdn.com/react-dom@^19.2.0",
-    "react-dom/client": "https://aistudiocdn.com/react-dom@^19.2.0/client",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+    "react": "https://esm.sh/react@19.0.0",
+    "react-dom": "https://esm.sh/react-dom@19.0.0",
+    "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
+    "@google/genai": "https://esm.sh/@google/genai",
     "firebase/app": "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js",
     "firebase/database": "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/",
     "firebase/": "https://esm.sh/firebase@^12.7.0/"
   }
 }
 </script>
-</head>
+  </head>
   <body>
     <div id="root"></div>
   </body>

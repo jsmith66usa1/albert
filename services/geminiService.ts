@@ -33,10 +33,13 @@ export const sendMessageStream = async (message: string, history: ChatMessage[])
 export const generateScientificImage = async (prompt: string) => {
   const ai = getAI();
   try {
+    // Optimized prompt for faster generation turnaround
+    const optimizedPrompt = `Scientific illustration: ${prompt}. Museum quality, chalkboard aesthetic, cinematic cosmic lighting, high detail.`;
+    
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: [{
-        parts: [{ text: `A museum-quality scientific illustration of: ${prompt}. Cinematic lighting, intricate details, chalkboard aesthetic mixed with cosmic nebulas, realistic yet artistic.` }]
+        parts: [{ text: optimizedPrompt }]
       }],
       config: {
         imageConfig: {
@@ -48,7 +51,7 @@ export const generateScientificImage = async (prompt: string) => {
     if (response.candidates?.[0]?.content?.parts) {
       for (const part of response.candidates[0].content.parts) {
         if (part.inlineData) {
-          return `data:image/png;base64,${part.inlineData.data}`;
+          return part.inlineData.data; // Return raw base64
         }
       }
     }

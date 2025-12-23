@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { ChatMessage, Suggestion } from './types';
-import { sendMessageStream, generateScientificImage, generateSpeech, playAudioBuffer, warmupAudioContext, cancelAllPendingTTS } from './services/geminiService';
+import { sendMessageStream, generateScientificImage, generateSpeech, playAudioBuffer, warmupAudioContext } from './services/geminiService';
 import { getCachedChapter, saveChapterToCache, getCachedImage, saveCachedImage } from './services/firebaseService';
 import { INITIAL_IMAGE } from './constants';
 import { CHAPTER_CONTENT } from './data/chapters';
@@ -46,8 +46,11 @@ const App: React.FC = () => {
   const isPlayingQueueRef = useRef(false);
   const activeSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const sessionIDRef = useRef(0);
+  
+  // Store Blob URLs directly in cache to avoid repeat processing
   const imageCacheRef = useRef<Map<string, string>>(new Map());
   const blobUrlCacheRef = useRef<Map<string, string>>(new Map());
+  
   const lastTriggeredPromptRef = useRef<string | null>(null);
   const activeMessageIdRef = useRef<string | null>(null);
 
@@ -218,7 +221,7 @@ const App: React.FC = () => {
             }
 
             if (cacheLabel && activeMessageIdRef.current === modelMsgId) {
-                const currentRaw = [...imageCacheRef.current.values()].pop() || currentImage;
+                const currentRaw = imageCacheRef.current.get(lastTriggeredPromptRef.current || '') || currentImage;
                 saveChapterToCache(cacheLabel, accumulatedText, currentRaw);
             }
         }
@@ -248,8 +251,10 @@ const App: React.FC = () => {
         const displayLabel = prompt.split(',')[0].substring(0, 40) + (prompt.length > 40 ? '...' : '');
         setCurrentTopicLabel(displayLabel);
         
+        // Optimistic Load: Check local cache first to avoid state flicker
         if (imageCacheRef.current.has(prompt)) {
           setCurrentImage(getBlobUrlFromBase64(imageCacheRef.current.get(prompt)!));
+          setIsGeneratingImage(false);
         } else {
           triggerImageGeneration(prompt);
         }
@@ -258,22 +263,30 @@ const App: React.FC = () => {
   };
 
   const triggerImageGeneration = async (prompt: string) => {
+    // If it's already in local cache, do nothing
+    if (imageCacheRef.current.has(prompt)) return;
+
     setIsGeneratingImage(true);
     try {
+      // Check Global Firebase Cache first
       const globalCachedB64 = await getCachedImage(prompt);
       if (globalCachedB64) {
         imageCacheRef.current.set(prompt, globalCachedB64);
         setCurrentImage(getBlobUrlFromBase64(globalCachedB64));
+        setIsGeneratingImage(false);
         return;
       }
 
+      // Generate New
       const newB64 = await generateScientificImage(prompt);
       if (newB64) {
         imageCacheRef.current.set(prompt, newB64);
         setCurrentImage(getBlobUrlFromBase64(newB64));
         saveCachedImage(prompt, newB64);
       }
-    } finally { setIsGeneratingImage(false); }
+    } finally { 
+      setIsGeneratingImage(false); 
+    }
   };
 
   const buildSuggestions = (text: string, currentCompleted: number) => {
