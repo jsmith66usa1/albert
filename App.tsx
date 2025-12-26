@@ -168,6 +168,7 @@ const App: React.FC = () => {
     stopAudio();
     lastTriggeredPromptRef.current = null;
     
+    // Logic: Always clear if it's a "Next" button click or a new topic button
     const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', text: text, timestamp: new Date() };
     const currentHistory = shouldClear ? [] : messages;
     
@@ -307,6 +308,7 @@ const App: React.FC = () => {
       else if (currentCompleted === 6) mathPrompt = "Professor, explain the complex math of curved spacetime.";
       else if (currentCompleted === 7) mathPrompt = "Professor, what mathematical logic drives the search for a Unified Theory?";
 
+      // Topic Diagram or specific logic questions should also trigger a clear to keep things at the top
       next.push({ label: 'Topic Diagram', text: mathPrompt });
       next.push({ label: 'FAQs', text: "OPEN_FAQ_MENU" });
       setSuggestions(next);
@@ -444,7 +446,8 @@ const App: React.FC = () => {
                       key={opt.id}
                       onClick={() => {
                           if (opt.id === 'stop') stopAudio();
-                          else handleSendMessage(opt.prompt, (opt as any).label, activeMenuType === 'timeline');
+                          // Clear history when switching topics via menu
+                          else handleSendMessage(opt.prompt, (opt as any).label, true);
                           setIsMenuOpen(false);
                       }}
                       className={`w-full text-left p-6 border transition-all rounded-2xl group relative overflow-hidden flex flex-col justify-center ${
@@ -471,7 +474,8 @@ const App: React.FC = () => {
                       key={i}
                       onClick={() => {
                         if (s.text === "OPEN_FAQ_MENU") openMenu('faqs');
-                        else handleSendMessage(s.text, s.label, s.label.startsWith('Next:'));
+                        // Clear history (shouldClear=true) for new chapters and topic diagrams
+                        else handleSendMessage(s.text, s.label, true);
                       }}
                       className={`px-4 py-2 text-[11px] font-bold rounded-lg transition-all border font-mono tracking-tight ${
                         s.label.startsWith('Next:') 

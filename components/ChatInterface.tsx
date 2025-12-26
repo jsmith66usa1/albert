@@ -28,14 +28,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, isTyping }) => 
 
     triggerMathTypeset();
 
-    // Scroll Logic
-    if (messages.length <= 2) {
-      containerRef.current?.scrollTo({ top: 0, behavior: 'auto' });
-    } else {
-      containerRef.current?.scrollTo({
-        top: containerRef.current.scrollHeight,
-        behavior: 'smooth'
-      });
+    // Forced Top Scrolling: Ensuring the user always sees the start of the Professor's lecture.
+    // We disable the previous "scroll to bottom" logic to satisfy the request to keep it at the top.
+    if (containerRef.current) {
+      containerRef.current.scrollTo({ top: 0, behavior: 'auto' });
     }
 
     return () => {
@@ -53,7 +49,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, isTyping }) => 
   return (
     <div 
       ref={containerRef}
-      className="flex-1 overflow-y-auto p-5 space-y-6 bg-zinc-950/50 relative scroll-smooth flex flex-col justify-start custom-scrollbar tex2jax_process" 
+      className="flex-1 overflow-y-auto p-5 space-y-6 bg-zinc-950/50 relative scroll-auto flex flex-col justify-start custom-scrollbar tex2jax_process" 
     >
       {messages.map((msg) => (
         <div
