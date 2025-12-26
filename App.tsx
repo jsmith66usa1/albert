@@ -47,7 +47,6 @@ const App: React.FC = () => {
   const activeSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const sessionIDRef = useRef(0);
   
-  // Store Blob URLs directly in cache to avoid repeat processing
   const imageCacheRef = useRef<Map<string, string>>(new Map());
   const blobUrlCacheRef = useRef<Map<string, string>>(new Map());
   
@@ -168,7 +167,6 @@ const App: React.FC = () => {
     stopAudio();
     lastTriggeredPromptRef.current = null;
     
-    // Logic: Always clear if it's a "Next" button click or a new topic button
     const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', text: text, timestamp: new Date() };
     const currentHistory = shouldClear ? [] : messages;
     
@@ -203,6 +201,7 @@ const App: React.FC = () => {
               setCurrentImage(getBlobUrlFromBase64(b64));
             }
             
+            // Scan and trigger image logic (which includes global caching)
             handleImageScanning(contentToUse);
             
             for (let i = 0; i < contentToUse.length; i += 30) {
@@ -252,24 +251,23 @@ const App: React.FC = () => {
         const displayLabel = prompt.split(',')[0].substring(0, 40) + (prompt.length > 40 ? '...' : '');
         setCurrentTopicLabel(displayLabel);
         
-        // Optimistic Load: Check local cache first to avoid state flicker
-        if (imageCacheRef.current.has(prompt)) {
-          setCurrentImage(getBlobUrlFromBase64(imageCacheRef.current.get(prompt)!));
-          setIsGeneratingImage(false);
-        } else {
-          triggerImageGeneration(prompt);
-        }
+        // This function now handles all layers of caching (Local -> Firebase Global -> Generation)
+        triggerImageGeneration(prompt);
       }
     }
   };
 
   const triggerImageGeneration = async (prompt: string) => {
-    // If it's already in local cache, do nothing
-    if (imageCacheRef.current.has(prompt)) return;
+    // 1. Check Local Session Cache (Instant)
+    if (imageCacheRef.current.has(prompt)) {
+      setCurrentImage(getBlobUrlFromBase64(imageCacheRef.current.get(prompt)!));
+      setIsGeneratingImage(false);
+      return;
+    }
 
     setIsGeneratingImage(true);
     try {
-      // Check Global Firebase Cache first
+      // 2. Check Global Firebase Vault (Shared Memory for all users)
       const globalCachedB64 = await getCachedImage(prompt);
       if (globalCachedB64) {
         imageCacheRef.current.set(prompt, globalCachedB64);
@@ -278,11 +276,13 @@ const App: React.FC = () => {
         return;
       }
 
-      // Generate New
+      // 3. Generate New via AI (Last Resort)
       const newB64 = await generateScientificImage(prompt);
       if (newB64) {
+        // Save to Local Cache
         imageCacheRef.current.set(prompt, newB64);
         setCurrentImage(getBlobUrlFromBase64(newB64));
+        // Save to Global Firebase Vault so others don't have to generate it
         saveCachedImage(prompt, newB64);
       }
     } finally { 
@@ -308,7 +308,6 @@ const App: React.FC = () => {
       else if (currentCompleted === 6) mathPrompt = "Professor, explain the complex math of curved spacetime.";
       else if (currentCompleted === 7) mathPrompt = "Professor, what mathematical logic drives the search for a Unified Theory?";
 
-      // Topic Diagram or specific logic questions should also trigger a clear to keep things at the top
       next.push({ label: 'Topic Diagram', text: mathPrompt });
       next.push({ label: 'FAQs', text: "OPEN_FAQ_MENU" });
       setSuggestions(next);
@@ -446,7 +445,6 @@ const App: React.FC = () => {
                       key={opt.id}
                       onClick={() => {
                           if (opt.id === 'stop') stopAudio();
-                          // Clear history when switching topics via menu
                           else handleSendMessage(opt.prompt, (opt as any).label, true);
                           setIsMenuOpen(false);
                       }}
@@ -474,7 +472,6 @@ const App: React.FC = () => {
                       key={i}
                       onClick={() => {
                         if (s.text === "OPEN_FAQ_MENU") openMenu('faqs');
-                        // Clear history (shouldClear=true) for new chapters and topic diagrams
                         else handleSendMessage(s.text, s.label, true);
                       }}
                       className={`px-4 py-2 text-[11px] font-bold rounded-lg transition-all border font-mono tracking-tight ${
