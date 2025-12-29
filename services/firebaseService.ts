@@ -3,11 +3,12 @@ import { getDatabase, ref, get, set, Database } from "firebase/database";
 
 const getFirebaseConfig = () => {
   const projectId = process.env.FIREBASE_PROJECT_ID || "einstein-math-history"; 
-  // We strictly require FIREBASE_API_KEY to attempt a real connection to avoid warnings with the Gemini key
+  const dbUrl = process.env.FIREBASE_DATABASE_URL || `https://${projectId}-default-rtdb.firebaseio.com/`;
+  
   return {
-    apiKey: process.env.FIREBASE_API_KEY, 
+    apiKey: process.env.FIREBASE_API_KEY || process.env.API_KEY, 
     authDomain: process.env.FIREBASE_AUTH_DOMAIN || `${projectId}.firebaseapp.com`,
-    databaseURL: process.env.FIREBASE_DATABASE_URL || `https://${projectId}.firebaseio.com/`,
+    databaseURL: dbUrl,
     projectId: projectId,
     storageBucket: process.env.FIREBASE_STORAGE_BUCKET || `${projectId}.appspot.com`,
   };
@@ -20,28 +21,23 @@ const getDB = (): Database | null => {
   
   const config = getFirebaseConfig();
   
-  // If the user hasn't provided a Firebase API key, we skip Firebase entirely 
-  // to prevent the "Firebase error. Please ensure... configured correctly" warnings.
-  if (!config.apiKey && !process.env.FIREBASE_DATABASE_URL) {
-    return null;
+  // Guard: Only initialize if we have at least an API Key and a likely project ID
+  if (!config.apiKey || !config.projectId || config.projectId === "einstein-math-history") {
+    // If using the default placeholder and no explicit key, we skip to avoid console noise
+    if (!process.env.FIREBASE_API_KEY) return null;
   }
 
   try {
     let app: FirebaseApp;
     if (getApps().length === 0) {
-      // Use the Gemini key as a last resort fallback only if specifically requested via config
-      const finalConfig = {
-        ...config,
-        apiKey: config.apiKey || process.env.API_KEY
-      };
-      app = initializeApp(finalConfig);
+      app = initializeApp(config);
     } else {
       app = getApp();
     }
     dbInstance = getDatabase(app);
     return dbInstance;
   } catch (error) {
-    console.warn("Firebase initialization skipped or failed. Using local state.");
+    console.debug("Firebase initialization skipped for local dev.");
     return null;
   }
 };
@@ -57,9 +53,6 @@ const sanitizeKey = (key: string): string => {
   return key.replace(/[.$#[\]/]/g, "_").substring(0, 120).trim();
 };
 
-/**
- * Shared Chapter Vault
- */
 export const getCachedChapter = async (label: string): Promise<CachedChapter | null> => {
   const db = getDB();
   if (!db) return null;
@@ -80,14 +73,9 @@ export const saveChapterToCache = async (label: string, text: string, image: str
     const key = sanitizeKey(label);
     const chapterRef = ref(db, `shared_vault/chapters/${key}`);
     await set(chapterRef, { text, image, label, timestamp: Date.now() });
-  } catch (error) {
-    // Silent fail on save - doesn't interrupt user flow
-  }
+  } catch (error) {}
 };
 
-/**
- * Global Image Prompt Vault
- */
 export const getCachedImage = async (prompt: string): Promise<string | null> => {
   const db = getDB();
   if (!db) return null;
@@ -111,7 +99,5 @@ export const saveCachedImage = async (prompt: string, base64: string): Promise<v
     if (!snapshot.exists()) {
       await set(imageRef, { data: base64, timestamp: Date.now() });
     }
-  } catch (error) {
-    // Silent fail
-  }
+  } catch (error) {}
 };

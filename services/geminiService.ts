@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Modality } from "@google/genai";
 import { EINSTEIN_SYSTEM_INSTRUCTION } from "../constants";
 import { ChatMessage } from "../types";
@@ -33,8 +32,8 @@ export const sendMessageStream = async (message: string, history: ChatMessage[])
 export const generateScientificImage = async (prompt: string) => {
   const ai = getAI();
   try {
-    // Optimized prompt for faster generation turnaround
-    const optimizedPrompt = `Scientific illustration: ${prompt}. Museum quality, chalkboard aesthetic, cinematic cosmic lighting, high detail.`;
+    // Safer, more specific educational prompt to ensure consistency
+    const optimizedPrompt = `Scientific concept visual: ${prompt}. Chalkboard style, clean white lines on dark background, educational illustration, clear mathematical diagrams. Professional museum quality.`;
     
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
@@ -51,13 +50,13 @@ export const generateScientificImage = async (prompt: string) => {
     if (response.candidates?.[0]?.content?.parts) {
       for (const part of response.candidates[0].content.parts) {
         if (part.inlineData) {
-          return part.inlineData.data; // Return raw base64
+          return part.inlineData.data; // Return raw base64 string
         }
       }
     }
     return null;
   } catch (error) {
-    console.error("Image generation failed:", error);
+    console.error("Einstein Visual generation failed:", error);
     return null;
   }
 };
@@ -119,7 +118,7 @@ export const playAudioBuffer = async (buffer: AudioBuffer): Promise<AudioBufferS
 };
 
 export const cancelAllPendingTTS = () => {
-  // Logic handled by sessionID tracking in App.tsx
+  // logic handled by sessionID in App
 };
 
 function decode(base64: string) {

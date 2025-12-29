@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { ChatMessage, Suggestion } from './types';
 import { sendMessageStream, generateScientificImage, generateSpeech, playAudioBuffer, warmupAudioContext } from './services/geminiService';
@@ -63,23 +62,29 @@ const App: React.FC = () => {
   }, []);
 
   const getBlobUrlFromBase64 = (base64: string): string => {
-    if (!base64 || base64.startsWith('blob:') || base64.startsWith('http')) return base64;
+    if (!base64) return INITIAL_IMAGE;
+    if (base64.startsWith('blob:') || base64.startsWith('http')) return base64;
+    
+    // Check local session cache for URL to avoid re-creating Blobs
     if (blobUrlCacheRef.current.has(base64)) return blobUrlCacheRef.current.get(base64)!;
     
     try {
-      const parts = base64.split(';base64,');
-      const b64Data = parts[1] || base64;
-      const raw = window.atob(b64Data);
-      const uInt8Array = new Uint8Array(raw.length);
-      for (let i = 0; i < raw.length; ++i) {
-        uInt8Array[i] = raw.charCodeAt(i);
+      // Clean up base64: remove potential headers and whitespace
+      const base64Data = base64.includes('base64,') ? base64.split('base64,')[1] : base64;
+      const cleanB64 = base64Data.replace(/\s/g, ''); 
+      
+      const binaryString = window.atob(cleanB64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
       }
-      const blob = new Blob([uInt8Array], { type: 'image/png' });
+      const blob = new Blob([bytes], { type: 'image/png' });
       const url = URL.createObjectURL(blob);
       blobUrlCacheRef.current.set(base64, url);
       return url;
     } catch (e) {
-      return base64;
+      console.error("Base64 decode failed for Einstein Visual:", e);
+      return INITIAL_IMAGE; // Safe fallback
     }
   };
 
@@ -195,13 +200,12 @@ const App: React.FC = () => {
 
         if (preloadedContent || cachedData) {
             const contentToUse = preloadedContent || cachedData!.text;
-            if (cachedData) {
+            if (cachedData && cachedData.image) {
               const b64 = cachedData.image;
               imageCacheRef.current.set(cacheLabel!, b64);
               setCurrentImage(getBlobUrlFromBase64(b64));
             }
             
-            // Scan and trigger image logic (which includes global caching)
             handleImageScanning(contentToUse);
             
             for (let i = 0; i < contentToUse.length; i += 30) {
@@ -250,15 +254,13 @@ const App: React.FC = () => {
         lastTriggeredPromptRef.current = prompt;
         const displayLabel = prompt.split(',')[0].substring(0, 40) + (prompt.length > 40 ? '...' : '');
         setCurrentTopicLabel(displayLabel);
-        
-        // This function now handles all layers of caching (Local -> Firebase Global -> Generation)
         triggerImageGeneration(prompt);
       }
     }
   };
 
   const triggerImageGeneration = async (prompt: string) => {
-    // 1. Check Local Session Cache (Instant)
+    // 1. Check local session cache
     if (imageCacheRef.current.has(prompt)) {
       setCurrentImage(getBlobUrlFromBase64(imageCacheRef.current.get(prompt)!));
       setIsGeneratingImage(false);
@@ -267,7 +269,7 @@ const App: React.FC = () => {
 
     setIsGeneratingImage(true);
     try {
-      // 2. Check Global Firebase Vault (Shared Memory for all users)
+      // 2. Check global Firebase cache
       const globalCachedB64 = await getCachedImage(prompt);
       if (globalCachedB64) {
         imageCacheRef.current.set(prompt, globalCachedB64);
@@ -276,15 +278,15 @@ const App: React.FC = () => {
         return;
       }
 
-      // 3. Generate New via AI (Last Resort)
+      // 3. Generate new image
       const newB64 = await generateScientificImage(prompt);
       if (newB64) {
-        // Save to Local Cache
         imageCacheRef.current.set(prompt, newB64);
         setCurrentImage(getBlobUrlFromBase64(newB64));
-        // Save to Global Firebase Vault so others don't have to generate it
         saveCachedImage(prompt, newB64);
       }
+    } catch (err) {
+      console.error("Image generation process failed:", err);
     } finally { 
       setIsGeneratingImage(false); 
     }
@@ -325,11 +327,11 @@ const App: React.FC = () => {
                <img src={INITIAL_IMAGE} className="w-full h-full object-cover opacity-50 blur-sm" alt="Einstein" />
            </div>
            <div className="z-10 text-center max-w-3xl px-8 animate-in fade-in slide-in-from-bottom-12 duration-1000">
-             <h1 className="text-6xl md:text-8xl font-bold mb-8 tracking-tighter text-white font-['Playfair_Display'] drop-shadow-2xl">Einstein's Universe</h1>
-             <p className="text-xl md:text-3xl mb-12 leading-relaxed italic opacity-90 font-['Fira_Code']">"Imagination is more important than knowledge."</p>
+             <h1 className="text-6xl md:text-8xl font-bold mb-8 tracking-tighter text-white font-['Playfair_Display'] drop-shadow-2xl text-center">Einstein's Universe</h1>
+             <p className="text-xl md:text-3xl mb-12 leading-relaxed italic opacity-90 font-['Fira_Code'] text-center">"Imagination is more important than knowledge."</p>
              <button 
                onClick={() => { setHasStarted(true); handleSendMessage('Start', 'Introduction', true); }}
-               className="px-20 py-6 bg-indigo-900 hover:bg-indigo-800 text-white font-bold rounded-2xl text-2xl transition-all transform hover:scale-105 shadow-[0_20px_50px_rgba(49,46,129,0.3)] border border-indigo-500/50 group"
+               className="px-20 py-6 bg-indigo-900 hover:bg-indigo-800 text-white font-bold rounded-2xl text-2xl transition-all transform hover:scale-105 shadow-[0_20px_50px_rgba(49,46,129,0.3)] border border-indigo-500/50 group block mx-auto"
              >
                Enter the Lab
                <span className="inline-block ml-3 transform transition-transform group-hover:translate-x-2">→</span>
@@ -353,7 +355,7 @@ const App: React.FC = () => {
         <div className="flex items-center bg-zinc-800/50 rounded-xl p-1 border border-zinc-700/50 space-x-1 shadow-inner relative">
           {audioState === 'error_quota' && (
             <div className="absolute -top-10 right-0 bg-amber-900/90 border border-amber-600 text-amber-100 text-[10px] px-3 py-1 rounded-lg animate-bounce shadow-lg whitespace-nowrap">
-              The Professor is currently resting his voice (Quota Exceeded)
+              The Professor is currently resting his voice
             </div>
           )}
           <button 
@@ -403,7 +405,7 @@ const App: React.FC = () => {
                   </div>
                </div>
              )}
-             <img src={currentImage} alt="Mathematical Visualization" className="w-full h-full object-cover transition-all duration-1000 transform group-hover:scale-105" />
+             <img src={currentImage} alt="Mathematical Visualization" className="w-full h-full object-cover transition-opacity duration-700" style={{ opacity: isGeneratingImage ? 0.3 : 1 }} />
              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-zinc-950 via-zinc-950/70 to-transparent p-10 pointer-events-none">
                 <div className="flex items-center space-x-2 mb-2">
                     <span className="h-px w-6 bg-indigo-500"></span>
@@ -419,18 +421,11 @@ const App: React.FC = () => {
           
           {isMenuOpen && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-6 animate-in fade-in duration-300" onClick={() => setIsMenuOpen(false)}>
-              <div 
-                className="bg-zinc-900 border border-zinc-800 w-full max-w-2xl max-h-[85vh] rounded-3xl shadow-[0_0_100px_rgba(0,0,0,0.9)] overflow-hidden flex flex-col animate-in zoom-in-95 duration-500 relative"
-                onClick={(e) => e.stopPropagation()}
-              >
+              <div className="bg-zinc-900 border border-zinc-800 w-full max-w-2xl max-h-[85vh] rounded-3xl shadow-[0_0_100px_rgba(0,0,0,0.9)] overflow-hidden flex flex-col animate-in zoom-in-95 duration-500 relative" onClick={(e) => e.stopPropagation()}>
                 <div className="p-8 border-b border-zinc-800 flex justify-between items-start">
                   <div>
-                    <h2 className="text-3xl font-bold text-white font-['Playfair_Display']">
-                      {activeMenuType === 'timeline' ? 'Mathematical Timeline' : "Professor's FAQs"}
-                    </h2>
-                    <p className="text-zinc-500 text-xs uppercase tracking-[0.3em] mt-3 font-mono">
-                      {activeMenuType === 'timeline' ? 'The evolution of logic' : 'Inquire further into history'}
-                    </p>
+                    <h2 className="text-3xl font-bold text-white font-['Playfair_Display']">{activeMenuType === 'timeline' ? 'Mathematical Timeline' : "Professor's FAQs"}</h2>
+                    <p className="text-zinc-500 text-xs uppercase tracking-[0.3em] mt-3 font-mono">{activeMenuType === 'timeline' ? 'The evolution of logic' : 'Inquire further into history'}</p>
                   </div>
                   <button onClick={() => setIsMenuOpen(false)} className="p-2 text-zinc-500 hover:text-white transition-all transform hover:rotate-90">
                      <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -448,15 +443,9 @@ const App: React.FC = () => {
                           else handleSendMessage(opt.prompt, (opt as any).label, true);
                           setIsMenuOpen(false);
                       }}
-                      className={`w-full text-left p-6 border transition-all rounded-2xl group relative overflow-hidden flex flex-col justify-center ${
-                        opt.id === 'stop' 
-                          ? 'border-rose-900/30 bg-rose-950/5 text-rose-300 hover:bg-rose-950/20' 
-                          : 'border-zinc-800 bg-zinc-800/40 text-zinc-100 hover:bg-indigo-950/30 hover:border-indigo-500/50 hover:scale-[1.01]'
-                      }`}
+                      className={`w-full text-left p-6 border transition-all rounded-2xl group relative overflow-hidden flex flex-col justify-center ${opt.id === 'stop' ? 'border-rose-900/30 bg-rose-950/5 text-rose-300 hover:bg-rose-950/20' : 'border-zinc-800 bg-zinc-800/40 text-zinc-100 hover:bg-indigo-950/30 hover:border-indigo-500/50 hover:scale-[1.01]'}`}
                     >
-                      <div className="font-bold text-xl group-hover:text-white">
-                        {opt.label}
-                      </div>
+                      <div className="font-bold text-xl group-hover:text-white">{opt.label}</div>
                     </button>
                   ))}
                 </div>
@@ -474,11 +463,7 @@ const App: React.FC = () => {
                         if (s.text === "OPEN_FAQ_MENU") openMenu('faqs');
                         else handleSendMessage(s.text, s.label, true);
                       }}
-                      className={`px-4 py-2 text-[11px] font-bold rounded-lg transition-all border font-mono tracking-tight ${
-                        s.label.startsWith('Next:') 
-                          ? 'bg-indigo-900 border-indigo-400 text-white hover:bg-indigo-800' 
-                          : 'bg-zinc-800 border-zinc-700 hover:bg-zinc-700 text-zinc-400'
-                      }`}
+                      className={`px-4 py-2 text-[11px] font-bold rounded-lg transition-all border font-mono tracking-tight ${s.label.startsWith('Next:') ? 'bg-indigo-900 border-indigo-400 text-white hover:bg-indigo-800' : 'bg-zinc-800 border-zinc-700 hover:bg-zinc-700 text-zinc-400'}`}
                     >
                       {s.label}
                     </button>
