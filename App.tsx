@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { ChatMessage, Suggestion } from './types';
 import { sendMessageStream, generateScientificImage, generateSpeech, playAudioBuffer, warmupAudioContext } from './services/geminiService';
@@ -5,13 +6,6 @@ import { getCachedChapter, saveChapterToCache, getCachedImage, saveCachedImage }
 import { INITIAL_IMAGE } from './constants';
 import { CHAPTER_CONTENT } from './data/chapters';
 import ChatInterface from './components/ChatInterface';
-
-const FAQ_OPTIONS = [
-  { id: 'details', label: 'More Details?', prompt: 'Can you provide more technical details about this specific topic?' },
-  { id: 'figures', label: 'Historical Figures?', prompt: "Are there other historical figures involved in this development that we haven't discussed?" },
-  { id: 'innovations', label: 'Derived Innovations?', prompt: 'What modern innovations or technologies were derived from this mathematical discovery?' },
-  { id: 'stop', label: '■ Silence Professor', prompt: 'STOP' },
-];
 
 const SECTIONS = [
   { id: 'start', label: 'Introduction', prompt: 'Start', chapterNum: 0 },
@@ -22,6 +16,14 @@ const SECTIONS = [
   { id: 'ch5', label: 'Chapter 5: Age of Analysis', prompt: 'Start at Chapter 5: The Age of Analysis', chapterNum: 5 },
   { id: 'ch6', label: 'Chapter 6: The Quantum Leap', prompt: 'Start at Chapter 6: The Quantum Leap', chapterNum: 6 },
   { id: 'ch7', label: 'Chapter 7: The Unified Theory', prompt: 'Start at Chapter 7: The Unified Theory', chapterNum: 7 },
+];
+
+// Helper to get dynamic FAQs based on current context
+const getFAQOptions = (chapterTitle: string) => [
+  { id: 'details', label: 'More Details?', prompt: `Professor, can you provide more technical details specifically regarding ${chapterTitle}?` },
+  { id: 'figures', label: 'Historical Figures?', prompt: `Professor, are there other historical figures involved in the development of ${chapterTitle} that we haven't discussed?` },
+  { id: 'innovations', label: 'Derived Innovations?', prompt: `Professor, what modern innovations or technologies were directly derived from the discoveries in ${chapterTitle}?` },
+  { id: 'stop', label: '■ Silence Professor', prompt: 'STOP' },
 ];
 
 type AudioState = 'idle' | 'loading' | 'playing' | 'error_quota';
@@ -65,11 +67,9 @@ const App: React.FC = () => {
     if (!base64) return INITIAL_IMAGE;
     if (base64.startsWith('blob:') || base64.startsWith('http')) return base64;
     
-    // Check local session cache for URL to avoid re-creating Blobs
     if (blobUrlCacheRef.current.has(base64)) return blobUrlCacheRef.current.get(base64)!;
     
     try {
-      // Clean up base64: remove potential headers and whitespace
       const base64Data = base64.includes('base64,') ? base64.split('base64,')[1] : base64;
       const cleanB64 = base64Data.replace(/\s/g, ''); 
       
@@ -84,7 +84,7 @@ const App: React.FC = () => {
       return url;
     } catch (e) {
       console.error("Base64 decode failed for Einstein Visual:", e);
-      return INITIAL_IMAGE; // Safe fallback
+      return INITIAL_IMAGE;
     }
   };
 
@@ -260,7 +260,6 @@ const App: React.FC = () => {
   };
 
   const triggerImageGeneration = async (prompt: string) => {
-    // 1. Check local session cache
     if (imageCacheRef.current.has(prompt)) {
       setCurrentImage(getBlobUrlFromBase64(imageCacheRef.current.get(prompt)!));
       setIsGeneratingImage(false);
@@ -269,7 +268,6 @@ const App: React.FC = () => {
 
     setIsGeneratingImage(true);
     try {
-      // 2. Check global Firebase cache
       const globalCachedB64 = await getCachedImage(prompt);
       if (globalCachedB64) {
         imageCacheRef.current.set(prompt, globalCachedB64);
@@ -278,7 +276,6 @@ const App: React.FC = () => {
         return;
       }
 
-      // 3. Generate new image
       const newB64 = await generateScientificImage(prompt);
       if (newB64) {
         imageCacheRef.current.set(prompt, newB64);
@@ -301,14 +298,9 @@ const App: React.FC = () => {
           next.push({ label: `Next: ${nextSec.label}`, text: nextSec.prompt });
       }
 
-      let mathPrompt = "Professor, can you explain the mathematical logic behind this?";
-      if (currentCompleted === 1) mathPrompt = "Professor, explain the mathematical logic behind Euclidean geometry.";
-      else if (currentCompleted === 2) mathPrompt = "Professor, explain the revolutionary concept of Zero as a number.";
-      else if (currentCompleted === 3) mathPrompt = "Professor, explain the logic of balancing equations in Algebra.";
-      else if (currentCompleted === 4) mathPrompt = "Professor, explain the fundamental logic of Calculus.";
-      else if (currentCompleted === 5) mathPrompt = "Professor, explain the mathematical logic of probability theory.";
-      else if (currentCompleted === 6) mathPrompt = "Professor, explain the complex math of curved spacetime.";
-      else if (currentCompleted === 7) mathPrompt = "Professor, what mathematical logic drives the search for a Unified Theory?";
+      // Contextually aware Topic Diagram prompt
+      const currentChapterTitle = SECTIONS.find(s => s.chapterNum === currentCompleted)?.label || "the current topic";
+      const mathPrompt = `Professor, can you explain the specific mathematical logic and theory behind ${currentChapterTitle}? Please provide a detailed diagrammatic explanation.`;
 
       next.push({ label: 'Topic Diagram', text: mathPrompt });
       next.push({ label: 'FAQs', text: "OPEN_FAQ_MENU" });
@@ -319,6 +311,10 @@ const App: React.FC = () => {
     setActiveMenuType(type);
     setIsMenuOpen(true);
   };
+
+  // Get options for the current chapter
+  const currentChapterTitle = SECTIONS.find(s => s.chapterNum === completedChapterNum)?.label || "the current topic";
+  const dynamicFAQs = getFAQOptions(currentChapterTitle);
 
   if (!hasStarted) {
       return (
@@ -435,7 +431,7 @@ const App: React.FC = () => {
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-8 space-y-4 custom-scrollbar">
-                  {(activeMenuType === 'timeline' ? SECTIONS : FAQ_OPTIONS).map((opt) => (
+                  {(activeMenuType === 'timeline' ? SECTIONS : dynamicFAQs).map((opt) => (
                     <button
                       key={opt.id}
                       onClick={() => {
