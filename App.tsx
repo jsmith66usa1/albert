@@ -59,6 +59,7 @@ const App: React.FC = () => {
     window.addEventListener('click', unlock);
     return () => {
       window.removeEventListener('click', unlock);
+      // Clean up blob URLs to prevent memory leaks in long sessions
       blobUrlCacheRef.current.forEach(url => URL.revokeObjectURL(url));
     };
   }, []);
@@ -66,9 +67,12 @@ const App: React.FC = () => {
   const getBlobUrlFromBase64 = (base64: string): string => {
     if (!base64) return INITIAL_IMAGE;
     if (base64.startsWith('blob:') || base64.startsWith('http')) return base64;
+    
+    // Check if we already created a blob for this specific base64 string
     if (blobUrlCacheRef.current.has(base64)) return blobUrlCacheRef.current.get(base64)!;
     
     try {
+      // Robustly handle base64 data strings with potential URI prefixes
       const base64Data = base64.includes('base64,') ? base64.split('base64,')[1] : base64;
       const cleanB64 = base64Data.replace(/\s/g, ''); 
       const binaryString = window.atob(cleanB64);
@@ -81,7 +85,7 @@ const App: React.FC = () => {
       blobUrlCacheRef.current.set(base64, url);
       return url;
     } catch (e) {
-      console.error("Base64 decode failed", e);
+      console.error("Critical: Base64 to Blob conversion failed", e);
       return INITIAL_IMAGE;
     }
   };
@@ -108,12 +112,9 @@ const App: React.FC = () => {
         if (sessionIDRef.current !== currentSession) break;
         
         setAudioState('loading');
-        
-        // Use pre-fetched promise or start a new generation
         const currentAudioPromise = nextAudioPromiseRef.current || generateSpeech(audioTextQueueRef.current.shift() || "");
-        nextAudioPromiseRef.current = null; // Clear pre-fetch slot
+        nextAudioPromiseRef.current = null;
 
-        // Start pre-fetching the NEXT chunk immediately if available
         if (audioTextQueueRef.current.length > 0) {
           nextAudioPromiseRef.current = generateSpeech(audioTextQueueRef.current[0]);
           audioTextQueueRef.current.shift();
@@ -128,10 +129,8 @@ const App: React.FC = () => {
              const source = await playAudioBuffer(buffer);
              if (source) {
                activeSourceRef.current = source;
-               // Wait for this chunk to finish playing before starting the next
                await new Promise<void>((resolve) => {
                  source.onended = () => resolve();
-                 // Security timeout in case onended doesn't fire
                  setTimeout(resolve, (buffer.duration * 1000) + 200);
                });
              }
@@ -162,18 +161,15 @@ const App: React.FC = () => {
     const lastModelMessage = [...messages].reverse().find(m => m.role === 'model');
     if (!lastModelMessage) return;
 
-    // Clean text for TTS
     const cleanText = lastModelMessage.text
       .replace(/\[IMAGE:.*?\]/gi, '')
       .replace(/\[.*?\]/g, '')
-      .replace(/\\\(|\\\)|\\\[|\\\]/g, '') // Remove LaTeX wrappers for speech
+      .replace(/\\\(|\\\)|\\\[|\\\]/g, '')
       .replace(/\*/g, '')
       .trim();
 
     if (cleanText.length < 2) return;
 
-    // Split text into manageable chunks for generation
-    // We split by sentences, ensuring chunks aren't too massive
     const chunks = cleanText.match(/[^.!?\n]+[.!?\n]?/g) || [cleanText];
     
     stopAudio(); 
@@ -269,13 +265,17 @@ const App: React.FC = () => {
   };
 
   const triggerImageGeneration = async (prompt: string) => {
+    // 1. Session Cache Check
     if (imageCacheRef.current.has(prompt)) {
-      setCurrentImage(getBlobUrlFromBase64(imageCacheRef.current.get(prompt)!));
+      const cachedB64 = imageCacheRef.current.get(prompt)!;
+      setCurrentImage(getBlobUrlFromBase64(cachedB64));
       setIsGeneratingImage(false);
       return;
     }
+    
     setIsGeneratingImage(true);
     try {
+      // 2. Global Firebase Cache Check
       const globalCachedB64 = await getCachedImage(prompt);
       if (globalCachedB64) {
         imageCacheRef.current.set(prompt, globalCachedB64);
@@ -283,11 +283,16 @@ const App: React.FC = () => {
         setIsGeneratingImage(false);
         return;
       }
+
+      // 3. New Generation Attempt
       const newB64 = await generateScientificImage(prompt);
-      if (newB64) {
+      if (newB64 && newB64.length > 100) { // Basic length check to ensure it's valid data
         imageCacheRef.current.set(prompt, newB64);
         setCurrentImage(getBlobUrlFromBase64(newB64));
         saveCachedImage(prompt, newB64);
+      } else {
+        // Silent failure fallback to keep UI stable if generation is filtered
+        console.warn("Image generation returned empty or invalid data.");
       }
     } catch (err) {
       console.error("Image generation failed", err);
@@ -403,7 +408,16 @@ const App: React.FC = () => {
                   </div>
                </div>
              )}
-             <img src={currentImage} alt="Mathematical Visualization" className="w-full h-full object-cover transition-opacity duration-700" style={{ opacity: isGeneratingImage ? 0.3 : 1 }} />
+             <img 
+                src={currentImage} 
+                alt="Mathematical Visualization" 
+                className="w-full h-full object-cover transition-opacity duration-700" 
+                style={{ opacity: isGeneratingImage ? 0.3 : 1 }}
+                onError={(e) => {
+                   console.error("Image failed to load in UI, falling back to initial.");
+                   setCurrentImage(INITIAL_IMAGE);
+                }}
+             />
              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-zinc-950 via-zinc-950/70 to-transparent p-10 pointer-events-none">
                 <div className="flex items-center space-x-2 mb-2">
                     <span className="h-px w-6 bg-indigo-500"></span>

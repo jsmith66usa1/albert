@@ -32,8 +32,8 @@ export const sendMessageStream = async (message: string, history: ChatMessage[])
 export const generateScientificImage = async (prompt: string) => {
   const ai = getAI();
   try {
-    // Safer, more specific educational prompt to ensure consistency
-    const optimizedPrompt = `Scientific concept visual: ${prompt}. Chalkboard style, clean white lines on dark background, educational illustration, clear mathematical diagrams. Professional museum quality.`;
+    // Highly specific educational prompt to minimize safety filter collisions
+    const optimizedPrompt = `Scientific illustration of ${prompt}. Style: Chalkboard drawing, dark background, precise white and blue geometric lines, clean academic aesthetic. High resolution, clear visual logic.`;
     
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
@@ -50,13 +50,13 @@ export const generateScientificImage = async (prompt: string) => {
     if (response.candidates?.[0]?.content?.parts) {
       for (const part of response.candidates[0].content.parts) {
         if (part.inlineData) {
-          return part.inlineData.data; // Return raw base64 string
+          return part.inlineData.data;
         }
       }
     }
     return null;
   } catch (error) {
-    console.error("Einstein Visual generation failed:", error);
+    console.error("Einstein Visual generation service error:", error);
     return null;
   }
 };
@@ -115,10 +115,6 @@ export const playAudioBuffer = async (buffer: AudioBuffer): Promise<AudioBufferS
   source.connect(audioCtx.destination);
   source.start();
   return source;
-};
-
-export const cancelAllPendingTTS = () => {
-  // logic handled by sessionID in App
 };
 
 function decode(base64: string) {
