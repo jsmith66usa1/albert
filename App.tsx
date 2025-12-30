@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { ChatMessage, Suggestion } from './types';
 import { sendMessageStream, generateScientificImage, generateSpeech, playAudioBuffer, warmupAudioContext } from './services/geminiService';
@@ -18,7 +17,6 @@ const SECTIONS = [
   { id: 'ch7', label: 'Chapter 7: The Unified Theory', prompt: 'Start at Chapter 7: The Unified Theory', chapterNum: 7 },
 ];
 
-// Helper to get dynamic FAQs based on current context
 const getFAQOptions = (chapterTitle: string) => [
   { id: 'details', label: 'More Details?', prompt: `Professor, can you provide more technical details specifically regarding ${chapterTitle}?` },
   { id: 'figures', label: 'Historical Figures?', prompt: `Professor, are there other historical figures involved in the development of ${chapterTitle} that we haven't discussed?` },
@@ -43,7 +41,9 @@ const App: React.FC = () => {
   const [completedChapterNum, setCompletedChapterNum] = useState<number>(-1);
   const [currentTopicLabel, setCurrentTopicLabel] = useState<string>("Professor Einstein");
   
-  const audioQueueRef = useRef<Promise<AudioBuffer | null>[]>([]);
+  // Audio system state
+  const audioTextQueueRef = useRef<string[]>([]);
+  const nextAudioPromiseRef = useRef<Promise<AudioBuffer | null> | null>(null);
   const isPlayingQueueRef = useRef(false);
   const activeSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const sessionIDRef = useRef(0);
@@ -66,13 +66,11 @@ const App: React.FC = () => {
   const getBlobUrlFromBase64 = (base64: string): string => {
     if (!base64) return INITIAL_IMAGE;
     if (base64.startsWith('blob:') || base64.startsWith('http')) return base64;
-    
     if (blobUrlCacheRef.current.has(base64)) return blobUrlCacheRef.current.get(base64)!;
     
     try {
       const base64Data = base64.includes('base64,') ? base64.split('base64,')[1] : base64;
       const cleanB64 = base64Data.replace(/\s/g, ''); 
-      
       const binaryString = window.atob(cleanB64);
       const bytes = new Uint8Array(binaryString.length);
       for (let i = 0; i < binaryString.length; i++) {
@@ -83,7 +81,7 @@ const App: React.FC = () => {
       blobUrlCacheRef.current.set(base64, url);
       return url;
     } catch (e) {
-      console.error("Base64 decode failed for Einstein Visual:", e);
+      console.error("Base64 decode failed", e);
       return INITIAL_IMAGE;
     }
   };
@@ -94,7 +92,8 @@ const App: React.FC = () => {
       try { activeSourceRef.current.stop(); } catch(e) {}
       activeSourceRef.current = null;
     }
-    audioQueueRef.current = [];
+    audioTextQueueRef.current = [];
+    nextAudioPromiseRef.current = null;
     isPlayingQueueRef.current = false;
     setAudioState('idle');
   };
@@ -105,32 +104,42 @@ const App: React.FC = () => {
     const currentSession = sessionIDRef.current;
     
     try {
-      while (audioQueueRef.current.length > 0) {
+      while (audioTextQueueRef.current.length > 0 || nextAudioPromiseRef.current) {
         if (sessionIDRef.current !== currentSession) break;
-        setAudioState('loading');
-        const nextAudioPromise = audioQueueRef.current[0];
-        audioQueueRef.current.shift(); 
         
+        setAudioState('loading');
+        
+        // Use pre-fetched promise or start a new generation
+        const currentAudioPromise = nextAudioPromiseRef.current || generateSpeech(audioTextQueueRef.current.shift() || "");
+        nextAudioPromiseRef.current = null; // Clear pre-fetch slot
+
+        // Start pre-fetching the NEXT chunk immediately if available
+        if (audioTextQueueRef.current.length > 0) {
+          nextAudioPromiseRef.current = generateSpeech(audioTextQueueRef.current[0]);
+          audioTextQueueRef.current.shift();
+        }
+
         try {
-          const buffer = await nextAudioPromise;
+          const buffer = await currentAudioPromise;
           if (sessionIDRef.current !== currentSession) break;
+          
           if (buffer) {
              setAudioState('playing');
              const source = await playAudioBuffer(buffer);
              if (source) {
                activeSourceRef.current = source;
+               // Wait for this chunk to finish playing before starting the next
                await new Promise<void>((resolve) => {
                  source.onended = () => resolve();
-                 setTimeout(resolve, (buffer.duration * 1000) + 100);
+                 // Security timeout in case onended doesn't fire
+                 setTimeout(resolve, (buffer.duration * 1000) + 200);
                });
              }
           }
         } catch (err: any) {
           if (err.message === "QUOTA_EXCEEDED") {
             setAudioState('error_quota');
-            setTimeout(() => {
-              if (sessionIDRef.current === currentSession) setAudioState('idle');
-            }, 5000);
+            setTimeout(() => { if (sessionIDRef.current === currentSession) setAudioState('idle'); }, 5000);
             break;
           }
         }
@@ -138,7 +147,9 @@ const App: React.FC = () => {
     } finally {
       if (sessionIDRef.current === currentSession) {
         isPlayingQueueRef.current = false;
-        if (audioQueueRef.current.length === 0 && audioState !== 'error_quota') setAudioState('idle');
+        if (audioTextQueueRef.current.length === 0 && !nextAudioPromiseRef.current && audioState !== 'error_quota') {
+          setAudioState('idle');
+        }
       }
     }
   };
@@ -151,19 +162,22 @@ const App: React.FC = () => {
     const lastModelMessage = [...messages].reverse().find(m => m.role === 'model');
     if (!lastModelMessage) return;
 
+    // Clean text for TTS
     const cleanText = lastModelMessage.text
       .replace(/\[IMAGE:.*?\]/gi, '')
       .replace(/\[.*?\]/g, '')
+      .replace(/\\\(|\\\)|\\\[|\\\]/g, '') // Remove LaTeX wrappers for speech
       .replace(/\*/g, '')
       .trim();
 
-    if (cleanText.length < 5) return;
-    const sentences = cleanText.match(/[^.!?\n]+[.!?\n]/g) || [cleanText];
+    if (cleanText.length < 2) return;
+
+    // Split text into manageable chunks for generation
+    // We split by sentences, ensuring chunks aren't too massive
+    const chunks = cleanText.match(/[^.!?\n]+[.!?\n]?/g) || [cleanText];
     
     stopAudio(); 
-    for (const s of sentences) {
-      audioQueueRef.current.push(generateSpeech(s));
-    }
+    audioTextQueueRef.current = chunks.map(c => c.trim()).filter(c => c.length > 0);
     processAudioQueue();
   };
 
@@ -192,7 +206,6 @@ const App: React.FC = () => {
     try {
         let accumulatedText = '';
         const preloadedContent = CHAPTER_CONTENT[text];
-        
         let cachedData = null;
         if (!preloadedContent && cacheLabel) {
             cachedData = await getCachedChapter(cacheLabel);
@@ -205,9 +218,7 @@ const App: React.FC = () => {
               imageCacheRef.current.set(cacheLabel!, b64);
               setCurrentImage(getBlobUrlFromBase64(b64));
             }
-            
             handleImageScanning(contentToUse);
-            
             for (let i = 0; i < contentToUse.length; i += 30) {
                 if (activeMessageIdRef.current !== modelMsgId) break;
                 accumulatedText += contentToUse.slice(i, i + 30);
@@ -223,7 +234,6 @@ const App: React.FC = () => {
                 setMessages(prev => prev.map(m => m.id === modelMsgId ? { ...m, text: accumulatedText } : m));
                 handleImageScanning(accumulatedText);
             }
-
             if (cacheLabel && activeMessageIdRef.current === modelMsgId) {
                 const currentRaw = imageCacheRef.current.get(lastTriggeredPromptRef.current || '') || currentImage;
                 saveChapterToCache(cacheLabel, accumulatedText, currentRaw);
@@ -249,7 +259,6 @@ const App: React.FC = () => {
     if (matches.length > 0) {
       const lastMatch = matches[matches.length - 1];
       const prompt = lastMatch[1].trim();
-      
       if (prompt !== lastTriggeredPromptRef.current) {
         lastTriggeredPromptRef.current = prompt;
         const displayLabel = prompt.split(',')[0].substring(0, 40) + (prompt.length > 40 ? '...' : '');
@@ -265,7 +274,6 @@ const App: React.FC = () => {
       setIsGeneratingImage(false);
       return;
     }
-
     setIsGeneratingImage(true);
     try {
       const globalCachedB64 = await getCachedImage(prompt);
@@ -275,7 +283,6 @@ const App: React.FC = () => {
         setIsGeneratingImage(false);
         return;
       }
-
       const newB64 = await generateScientificImage(prompt);
       if (newB64) {
         imageCacheRef.current.set(prompt, newB64);
@@ -283,7 +290,7 @@ const App: React.FC = () => {
         saveCachedImage(prompt, newB64);
       }
     } catch (err) {
-      console.error("Image generation process failed:", err);
+      console.error("Image generation failed", err);
     } finally { 
       setIsGeneratingImage(false); 
     }
@@ -292,16 +299,12 @@ const App: React.FC = () => {
   const buildSuggestions = (text: string, currentCompleted: number) => {
       const next: Suggestion[] = [];
       const actualNextChapterIdx = currentCompleted + 1;
-
       if (actualNextChapterIdx < SECTIONS.length) {
           const nextSec = SECTIONS[actualNextChapterIdx];
           next.push({ label: `Next: ${nextSec.label}`, text: nextSec.prompt });
       }
-
-      // Contextually aware Topic Diagram prompt
       const currentChapterTitle = SECTIONS.find(s => s.chapterNum === currentCompleted)?.label || "the current topic";
       const mathPrompt = `Professor, can you explain the specific mathematical logic and theory behind ${currentChapterTitle}? Please provide a detailed diagrammatic explanation.`;
-
       next.push({ label: 'Topic Diagram', text: mathPrompt });
       next.push({ label: 'FAQs', text: "OPEN_FAQ_MENU" });
       setSuggestions(next);
@@ -312,7 +315,6 @@ const App: React.FC = () => {
     setIsMenuOpen(true);
   };
 
-  // Get options for the current chapter
   const currentChapterTitle = SECTIONS.find(s => s.chapterNum === completedChapterNum)?.label || "the current topic";
   const dynamicFAQs = getFAQOptions(currentChapterTitle);
 
