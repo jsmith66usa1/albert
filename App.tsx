@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { ChatMessage, Suggestion } from './types';
 import { sendMessageStream, generateScientificImage, generateSpeech, playAudioBuffer, warmupAudioContext } from './services/geminiService';
@@ -18,9 +19,9 @@ const SECTIONS = [
 ];
 
 const getFAQOptions = (chapterTitle: string) => [
-  { id: 'details', label: 'More Details?', prompt: `Professor, can you provide more technical details specifically regarding ${chapterTitle}?` },
-  { id: 'figures', label: 'Historical Figures?', prompt: `Professor, are there other historical figures involved in the development of ${chapterTitle} that we haven't discussed?` },
-  { id: 'innovations', label: 'Derived Innovations?', prompt: `Professor, what modern innovations or technologies were directly derived from the discoveries in ${chapterTitle}?` },
+  { id: 'details', label: 'More Scientific Details?', prompt: `Professor, can you provide more technical details regarding the mathematics of ${chapterTitle}?` },
+  { id: 'figures', label: 'Who were the Key Figures?', prompt: `Professor, who were the other great minds involved in the development of ${chapterTitle}?` },
+  { id: 'innovations', label: 'Modern Applications?', prompt: `Professor, how does the discovery of ${chapterTitle} affect our modern technology today?` },
   { id: 'stop', label: '■ Silence Professor', prompt: 'STOP' },
 ];
 
@@ -41,16 +42,13 @@ const App: React.FC = () => {
   const [completedChapterNum, setCompletedChapterNum] = useState<number>(-1);
   const [currentTopicLabel, setCurrentTopicLabel] = useState<string>("Professor Einstein");
   
-  // Audio system state
   const audioTextQueueRef = useRef<string[]>([]);
   const nextAudioPromiseRef = useRef<Promise<AudioBuffer | null> | null>(null);
   const isPlayingQueueRef = useRef(false);
   const activeSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const sessionIDRef = useRef(0);
-  
   const imageCacheRef = useRef<Map<string, string>>(new Map());
   const blobUrlCacheRef = useRef<Map<string, string>>(new Map());
-  
   const lastTriggeredPromptRef = useRef<string | null>(null);
   const activeMessageIdRef = useRef<string | null>(null);
 
@@ -59,7 +57,6 @@ const App: React.FC = () => {
     window.addEventListener('click', unlock);
     return () => {
       window.removeEventListener('click', unlock);
-      // Clean up blob URLs to prevent memory leaks in long sessions
       blobUrlCacheRef.current.forEach(url => URL.revokeObjectURL(url));
     };
   }, []);
@@ -67,12 +64,8 @@ const App: React.FC = () => {
   const getBlobUrlFromBase64 = (base64: string): string => {
     if (!base64) return INITIAL_IMAGE;
     if (base64.startsWith('blob:') || base64.startsWith('http')) return base64;
-    
-    // Check if we already created a blob for this specific base64 string
     if (blobUrlCacheRef.current.has(base64)) return blobUrlCacheRef.current.get(base64)!;
-    
     try {
-      // Robustly handle base64 data strings with potential URI prefixes
       const base64Data = base64.includes('base64,') ? base64.split('base64,')[1] : base64;
       const cleanB64 = base64Data.replace(/\s/g, ''); 
       const binaryString = window.atob(cleanB64);
@@ -85,7 +78,6 @@ const App: React.FC = () => {
       blobUrlCacheRef.current.set(base64, url);
       return url;
     } catch (e) {
-      console.error("Critical: Base64 to Blob conversion failed", e);
       return INITIAL_IMAGE;
     }
   };
@@ -106,24 +98,19 @@ const App: React.FC = () => {
     if (isPlayingQueueRef.current) return;
     isPlayingQueueRef.current = true;
     const currentSession = sessionIDRef.current;
-    
     try {
       while (audioTextQueueRef.current.length > 0 || nextAudioPromiseRef.current) {
         if (sessionIDRef.current !== currentSession) break;
-        
         setAudioState('loading');
         const currentAudioPromise = nextAudioPromiseRef.current || generateSpeech(audioTextQueueRef.current.shift() || "");
         nextAudioPromiseRef.current = null;
-
         if (audioTextQueueRef.current.length > 0) {
           nextAudioPromiseRef.current = generateSpeech(audioTextQueueRef.current[0]);
           audioTextQueueRef.current.shift();
         }
-
         try {
           const buffer = await currentAudioPromise;
           if (sessionIDRef.current !== currentSession) break;
-          
           if (buffer) {
              setAudioState('playing');
              const source = await playAudioBuffer(buffer);
@@ -160,18 +147,14 @@ const App: React.FC = () => {
     }
     const lastModelMessage = [...messages].reverse().find(m => m.role === 'model');
     if (!lastModelMessage) return;
-
     const cleanText = lastModelMessage.text
       .replace(/\[IMAGE:.*?\]/gi, '')
       .replace(/\[.*?\]/g, '')
       .replace(/\\\(|\\\)|\\\[|\\\]/g, '')
       .replace(/\*/g, '')
       .trim();
-
     if (cleanText.length < 2) return;
-
     const chunks = cleanText.match(/[^.!?\n]+[.!?\n]?/g) || [cleanText];
-    
     stopAudio(); 
     audioTextQueueRef.current = chunks.map(c => c.trim()).filter(c => c.length > 0);
     processAudioQueue();
@@ -181,32 +164,21 @@ const App: React.FC = () => {
     if (!text.trim() || isStreaming) return;
     stopAudio();
     lastTriggeredPromptRef.current = null;
-    
     const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', text: text, timestamp: new Date() };
     const currentHistory = shouldClear ? [] : messages;
-    
-    if (shouldClear) {
-      setMessages([userMsg]);
-    } else {
-      setMessages(prev => [...prev, userMsg]);
-    }
-    
+    if (shouldClear) setMessages([userMsg]);
+    else setMessages(prev => [...prev, userMsg]);
     setInput('');
     setSuggestions([]);
     setIsStreaming(true);
-    
     const modelMsgId = (Date.now() + 1).toString();
     activeMessageIdRef.current = modelMsgId;
     setMessages(prev => [...prev, { id: modelMsgId, role: 'model', text: '', timestamp: new Date(), isStreaming: true }]);
-
     try {
         let accumulatedText = '';
         const preloadedContent = CHAPTER_CONTENT[text];
         let cachedData = null;
-        if (!preloadedContent && cacheLabel) {
-            cachedData = await getCachedChapter(cacheLabel);
-        }
-
+        if (!preloadedContent && cacheLabel) cachedData = await getCachedChapter(cacheLabel);
         if (preloadedContent || cachedData) {
             const contentToUse = preloadedContent || cachedData!.text;
             if (cachedData && cachedData.image) {
@@ -225,17 +197,11 @@ const App: React.FC = () => {
             const stream = await sendMessageStream(text, currentHistory); 
             for await (const chunk of stream) {
                 if (activeMessageIdRef.current !== modelMsgId) break;
-                const chunkText = chunk.text || '';
-                accumulatedText += chunkText;
+                accumulatedText += chunk.text || '';
                 setMessages(prev => prev.map(m => m.id === modelMsgId ? { ...m, text: accumulatedText } : m));
                 handleImageScanning(accumulatedText);
             }
-            if (cacheLabel && activeMessageIdRef.current === modelMsgId) {
-                const currentRaw = imageCacheRef.current.get(lastTriggeredPromptRef.current || '') || currentImage;
-                saveChapterToCache(cacheLabel, accumulatedText, currentRaw);
-            }
         }
-        
         if (activeMessageIdRef.current === modelMsgId) {
             setMessages(prev => prev.map(m => m.id === modelMsgId ? { ...m, isStreaming: false } : m));
             const completionMatch = accumulatedText.match(/\[CHAPTER_COMPLETED:\s*(\d+)\]/);
@@ -265,37 +231,24 @@ const App: React.FC = () => {
   };
 
   const triggerImageGeneration = async (prompt: string) => {
-    // 1. Session Cache Check
     if (imageCacheRef.current.has(prompt)) {
-      const cachedB64 = imageCacheRef.current.get(prompt)!;
-      setCurrentImage(getBlobUrlFromBase64(cachedB64));
-      setIsGeneratingImage(false);
+      setCurrentImage(getBlobUrlFromBase64(imageCacheRef.current.get(prompt)!));
       return;
     }
-    
     setIsGeneratingImage(true);
     try {
-      // 2. Global Firebase Cache Check
       const globalCachedB64 = await getCachedImage(prompt);
       if (globalCachedB64) {
         imageCacheRef.current.set(prompt, globalCachedB64);
         setCurrentImage(getBlobUrlFromBase64(globalCachedB64));
-        setIsGeneratingImage(false);
-        return;
-      }
-
-      // 3. New Generation Attempt
-      const newB64 = await generateScientificImage(prompt);
-      if (newB64 && newB64.length > 100) { // Basic length check to ensure it's valid data
-        imageCacheRef.current.set(prompt, newB64);
-        setCurrentImage(getBlobUrlFromBase64(newB64));
-        saveCachedImage(prompt, newB64);
       } else {
-        // Silent failure fallback to keep UI stable if generation is filtered
-        console.warn("Image generation returned empty or invalid data.");
+        const newB64 = await generateScientificImage(prompt);
+        if (newB64) {
+          imageCacheRef.current.set(prompt, newB64);
+          setCurrentImage(getBlobUrlFromBase64(newB64));
+          saveCachedImage(prompt, newB64);
+        }
       }
-    } catch (err) {
-      console.error("Image generation failed", err);
     } finally { 
       setIsGeneratingImage(false); 
     }
@@ -309,9 +262,8 @@ const App: React.FC = () => {
           next.push({ label: `Next: ${nextSec.label}`, text: nextSec.prompt });
       }
       const currentChapterTitle = SECTIONS.find(s => s.chapterNum === currentCompleted)?.label || "the current topic";
-      const mathPrompt = `Professor, can you explain the specific mathematical logic and theory behind ${currentChapterTitle}? Please provide a detailed diagrammatic explanation.`;
-      next.push({ label: 'Topic Diagram', text: mathPrompt });
-      next.push({ label: 'FAQs', text: "OPEN_FAQ_MENU" });
+      next.push({ label: 'Topic Diagram', text: `Professor, can you explain the specific mathematical logic and theory behind ${currentChapterTitle}? Please provide a detailed diagrammatic explanation.` });
+      next.push({ label: 'Laboratory FAQs', text: "OPEN_FAQ_MENU" });
       setSuggestions(next);
   };
 
@@ -319,9 +271,6 @@ const App: React.FC = () => {
     setActiveMenuType(type);
     setIsMenuOpen(true);
   };
-
-  const currentChapterTitle = SECTIONS.find(s => s.chapterNum === completedChapterNum)?.label || "the current topic";
-  const dynamicFAQs = getFAQOptions(currentChapterTitle);
 
   if (!hasStarted) {
       return (
@@ -358,65 +307,36 @@ const App: React.FC = () => {
         <div className="flex items-center bg-zinc-800/50 rounded-xl p-1 border border-zinc-700/50 space-x-1 shadow-inner relative">
           <button 
             onClick={handleHearSpeak}
-            className={`p-2 md:p-2.5 rounded-lg transition-all flex items-center space-x-2 ${audioState === 'playing' || audioState === 'loading' ? 'bg-indigo-600 text-white shadow-[0_0_15px_rgba(79,70,229,0.4)]' : audioState === 'error_quota' ? 'bg-amber-900 text-amber-200' : 'text-zinc-400 hover:bg-zinc-700 hover:text-white'}`}
+            className={`p-2 md:p-2.5 rounded-lg transition-all flex items-center space-x-2 ${audioState === 'playing' || audioState === 'loading' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:bg-zinc-700 hover:text-white'}`}
             title="Professor Speak"
           >
-            {audioState === 'playing' ? (
-               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 md:h-5 md:w-5 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-               </svg>
-            ) : audioState === 'loading' ? (
-               <div className="w-4 h-4 md:w-5 md:h-5 border-2 border-indigo-300 border-t-transparent rounded-full animate-spin"></div>
-            ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 md:h-5 md:w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5L6 9H2v6h4l5 4V5z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728" />
-              </svg>
-            )}
-            <span className="hidden sm:inline text-[10px] font-bold uppercase tracking-widest px-1">Speak</span>
+             <span className="text-[10px] font-bold uppercase tracking-widest px-1">Speak</span>
           </button>
-          
           <div className="w-px h-6 bg-zinc-700/50"></div>
-          
           <button 
             onClick={() => openMenu('timeline')} 
             className="p-2 md:p-2.5 text-zinc-400 rounded-lg hover:bg-zinc-700 hover:text-white transition-all flex items-center space-x-2"
-            title="Mathematical Timeline"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 md:h-5 md:w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16m-7 6h7" />
-            </svg>
-            <span className="hidden sm:inline text-[10px] font-bold uppercase tracking-widest px-1">Timeline</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest px-1">Timeline</span>
           </button>
         </div>
       </header>
 
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
         <div className="w-full h-[40vh] md:h-auto md:w-[55%] bg-black flex flex-col items-center justify-center relative shadow-[inset_-20px_0_60px_rgba(0,0,0,0.9)] z-10 shrink-0">
-          <div className="absolute inset-0 opacity-10 pointer-events-none overflow-hidden chalkboard-bg"></div>
+          <div className="absolute inset-0 opacity-10 pointer-events-none chalkboard-bg"></div>
           <div className="relative w-[95%] h-[92%] md:w-[92%] md:h-[85%] border border-zinc-800/50 rounded-xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)] bg-zinc-900 group">
              {isGeneratingImage && (
                <div className="absolute inset-0 bg-zinc-950/80 z-20 flex items-center justify-center backdrop-blur-md">
                   <div className="flex flex-col items-center p-4">
-                    <div className="w-10 h-10 md:w-16 md:h-16 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-                    <span className="mt-4 text-indigo-400 text-[8px] md:text-[10px] font-mono uppercase tracking-[0.4em] text-center px-6 animate-pulse">Calculating Visual Geometry...</span>
+                    <div className="w-10 h-10 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                    <span className="mt-4 text-indigo-400 text-[8px] font-mono uppercase tracking-[0.4em]">Calculating...</span>
                   </div>
                </div>
              )}
-             <img 
-                src={currentImage} 
-                alt="Mathematical Visualization" 
-                className="w-full h-full object-contain md:object-cover transition-opacity duration-700" 
-                style={{ opacity: isGeneratingImage ? 0.3 : 1 }}
-                onError={(e) => {
-                   setCurrentImage(INITIAL_IMAGE);
-                }}
-             />
-             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-zinc-950 via-zinc-950/70 to-transparent p-4 md:p-10 pointer-events-none">
-                <div className="flex items-center space-x-2 mb-1 md:mb-2">
-                    <span className="h-px w-4 md:w-6 bg-indigo-500"></span>
-                    <p className="text-indigo-400 text-[8px] md:text-[10px] font-mono tracking-[0.3em] uppercase font-bold">Scientific Insight</p>
-                </div>
+             <img src={currentImage} className="w-full h-full object-contain md:object-cover transition-opacity duration-700" style={{ opacity: isGeneratingImage ? 0.3 : 1 }} alt="Math Visualization" />
+             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-zinc-950 p-4 md:p-10 pointer-events-none">
+                <p className="text-indigo-400 text-[8px] md:text-[10px] font-mono tracking-[0.3em] uppercase font-bold mb-1">Scientific Insight</p>
                 <h3 className="text-white text-lg md:text-3xl font-serif italic leading-tight drop-shadow-xl line-clamp-2">{currentTopicLabel}</h3>
              </div>
           </div>
@@ -424,73 +344,37 @@ const App: React.FC = () => {
 
         <div className="w-full flex-1 md:w-[45%] flex flex-col bg-zinc-900 relative border-l border-zinc-800 overflow-hidden">
           <ChatInterface messages={messages} isTyping={isStreaming} />
-          
           {isMenuOpen && (
-            <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-4 md:p-6 animate-in fade-in duration-300" onClick={() => setIsMenuOpen(false)}>
-              <div className="bg-zinc-900 border border-zinc-800 w-full max-w-2xl max-h-[85vh] rounded-3xl shadow-[0_0_100px_rgba(0,0,0,0.9)] overflow-hidden flex flex-col animate-in zoom-in-95 duration-500 relative" onClick={(e) => e.stopPropagation()}>
-                <div className="p-6 md:p-8 border-b border-zinc-800 flex justify-between items-start">
-                  <div>
-                    <h2 className="text-xl md:text-3xl font-bold text-white font-['Playfair_Display']">{activeMenuType === 'timeline' ? 'Mathematical Timeline' : "Professor's FAQs"}</h2>
-                    <p className="text-zinc-500 text-[10px] uppercase tracking-[0.3em] mt-2 font-mono">{activeMenuType === 'timeline' ? 'The evolution of logic' : 'Inquire further into history'}</p>
-                  </div>
-                  <button onClick={() => setIsMenuOpen(false)} className="p-2 text-zinc-500 hover:text-white transition-all transform hover:rotate-90">
-                     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 md:h-8 md:w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
-                     </svg>
-                  </button>
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-4" onClick={() => setIsMenuOpen(false)}>
+              <div className="bg-zinc-900 border border-zinc-800 w-full max-w-2xl max-h-[85vh] rounded-3xl overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+                <div className="p-6 border-b border-zinc-800 flex justify-between items-start">
+                  <h2 className="text-xl md:text-3xl font-bold text-white font-['Playfair_Display']">{activeMenuType === 'timeline' ? 'Mathematical Timeline' : "Professor's FAQs"}</h2>
+                  <button onClick={() => setIsMenuOpen(false)} className="text-zinc-500 hover:text-white">Close</button>
                 </div>
-
-                <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-3 md:space-y-4 custom-scrollbar">
-                  {(activeMenuType === 'timeline' ? SECTIONS : dynamicFAQs).map((opt) => (
-                    <button
-                      key={opt.id}
-                      onClick={() => {
-                          if (opt.id === 'stop') stopAudio();
-                          else handleSendMessage(opt.prompt, (opt as any).label, true);
-                          setIsMenuOpen(false);
-                      }}
-                      className={`w-full text-left p-4 md:p-6 border transition-all rounded-2xl group relative overflow-hidden flex flex-col justify-center ${opt.id === 'stop' ? 'border-rose-900/30 bg-rose-950/5 text-rose-300 hover:bg-rose-950/20' : 'border-zinc-800 bg-zinc-800/40 text-zinc-100 hover:bg-indigo-950/30 hover:border-indigo-500/50 hover:scale-[1.01]'}`}
-                    >
-                      <div className="font-bold text-base md:text-xl group-hover:text-white">{opt.label}</div>
+                <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+                  {(activeMenuType === 'timeline' ? SECTIONS : getFAQOptions(SECTIONS.find(s => s.chapterNum === completedChapterNum)?.label || "the current topic")).map((opt) => (
+                    <button key={opt.id} onClick={() => { handleSendMessage(opt.prompt, (opt as any).label, true); setIsMenuOpen(false); }} className="w-full text-left p-4 border border-zinc-800 bg-zinc-800/40 text-zinc-100 hover:bg-indigo-950/30 rounded-2xl transition-all">
+                      <div className="font-bold text-base md:text-xl">{opt.label}</div>
                     </button>
                   ))}
                 </div>
               </div>
             </div>
           )}
-
           <div className="p-3 md:p-5 bg-zinc-950 border-t border-zinc-800 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:pb-5">
             {!isStreaming && suggestions.length > 0 && (
-              <div className="flex flex-wrap gap-1 md:gap-2 mb-3 md:mb-4 items-center overflow-x-auto pb-1 no-scrollbar">
+              <div className="flex flex-wrap gap-1 md:gap-2 mb-3 items-center overflow-x-auto pb-1 no-scrollbar">
                 {suggestions.map((s, i) => (
-                    <button
-                      key={i}
-                      onClick={() => {
-                        if (s.text === "OPEN_FAQ_MENU") openMenu('faqs');
-                        else handleSendMessage(s.text, s.label, true);
-                      }}
-                      className={`px-3 py-1.5 md:px-4 md:py-2 text-[9px] md:text-[11px] font-bold rounded-lg transition-all border font-mono tracking-tight whitespace-nowrap ${s.label.startsWith('Next:') ? 'bg-indigo-900 border-indigo-400 text-white hover:bg-indigo-800' : 'bg-zinc-800 border-zinc-700 hover:bg-zinc-700 text-zinc-400'}`}
-                    >
+                    <button key={i} onClick={() => { if (s.text === "OPEN_FAQ_MENU") openMenu('faqs'); else handleSendMessage(s.text, s.label, true); }} className={`px-3 py-1.5 text-[9px] md:text-[11px] font-bold rounded-lg transition-all border font-mono tracking-tight whitespace-nowrap ${s.label.startsWith('Next:') ? 'bg-indigo-900 border-indigo-400 text-white' : 'bg-zinc-800 border-zinc-700 text-zinc-400'}`}>
                       {s.label}
                     </button>
                 ))}
               </div>
             )}
             <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(input, undefined, true); }} className="flex space-x-2">
-              <input 
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask Professor..."
-                className="flex-1 bg-zinc-900 border border-zinc-800 px-4 md:px-5 py-3 md:py-4 outline-none font-sans text-xs md:text-sm rounded-xl text-white placeholder-zinc-600 transition-all focus:ring-1 focus:ring-indigo-500"
-                disabled={isStreaming}
-              />
-              <button 
-                type="submit"
-                disabled={!input.trim() || isStreaming}
-                className="bg-indigo-600 text-white px-4 md:px-8 py-3 md:py-4 font-bold hover:bg-indigo-500 transition-all disabled:opacity-50 rounded-xl flex items-center justify-center min-w-[90px] md:min-w-[120px] text-xs md:text-base"
-              >
-                {isStreaming ? <div className="w-4 h-4 md:w-5 md:h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : "Investigate"}
+              <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask Professor Einstein..." className="flex-1 bg-zinc-900 border border-zinc-800 px-4 py-3 outline-none text-xs rounded-xl text-white transition-all focus:ring-1 focus:ring-indigo-500" disabled={isStreaming} />
+              <button type="submit" disabled={!input.trim() || isStreaming} className="bg-indigo-600 text-white px-4 py-3 font-bold rounded-xl flex items-center justify-center min-w-[90px] text-xs">
+                {isStreaming ? "Thinking..." : "Investigate"}
               </button>
             </form>
           </div>

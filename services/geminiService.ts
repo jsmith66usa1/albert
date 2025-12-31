@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Modality } from "@google/genai";
 import { EINSTEIN_SYSTEM_INSTRUCTION } from "../constants";
 import { ChatMessage } from "../types";
@@ -32,7 +33,6 @@ export const sendMessageStream = async (message: string, history: ChatMessage[])
 export const generateScientificImage = async (prompt: string) => {
   const ai = getAI();
   try {
-    // Highly specific educational prompt to minimize safety filter collisions
     const optimizedPrompt = `Scientific illustration of ${prompt}. Style: Chalkboard drawing, dark background, precise white and blue geometric lines, clean academic aesthetic. High resolution, clear visual logic.`;
     
     const response = await ai.models.generateContent({
@@ -56,7 +56,6 @@ export const generateScientificImage = async (prompt: string) => {
     }
     return null;
   } catch (error) {
-    console.error("Einstein Visual generation service error:", error);
     return null;
   }
 };
@@ -80,7 +79,6 @@ export const generateSpeech = async (text: string): Promise<AudioBuffer | null> 
   
   try {
     const cleanText = text.replace(/[*#_]/g, '').trim();
-    
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
       contents: [{ parts: [{ text: `Professor Albert Einstein speaking: ${cleanText}` }] }],
@@ -96,14 +94,11 @@ export const generateSpeech = async (text: string): Promise<AudioBuffer | null> 
 
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (!base64Audio || !audioCtx) return null;
-
     return await decodeAudioData(decode(base64Audio), audioCtx, 24000, 1);
   } catch (error: any) {
     if (error?.message?.includes('429') || error?.message?.includes('quota')) {
-      console.warn("TTS Quota exceeded. Einstein is resting his voice.");
       throw new Error("QUOTA_EXCEEDED");
     }
-    console.error("TTS generation failed:", error);
     return null;
   }
 };
@@ -136,7 +131,6 @@ async function decodeAudioData(
   const dataInt16 = new Int16Array(data.buffer);
   const frameCount = dataInt16.length / numChannels;
   const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
-
   for (let channel = 0; channel < numChannels; channel++) {
     const channelData = buffer.getChannelData(channel);
     for (let i = 0; i < frameCount; i++) {

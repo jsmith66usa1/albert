@@ -1,6 +1,6 @@
 {
-  "name": "Einstein's Universe: A History of Math",
-  "description": "Explore the profound evolution of mathematics and physics with Albert Einstein as your guide.",
+  "name": "Einstein's Universe: The History of Math",
+  "description": "Explore the evolution of human logic and the history of mathematics with Professor Albert Einstein.",
   "requestFramePermissions": [
     "microphone"
   ]
