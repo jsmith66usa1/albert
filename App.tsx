@@ -482,7 +482,7 @@ const App: React.FC = () => {
                 ))}
               </div>
             )}
-            <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(input, undefined, false); }} className="flex space-x-2">
+            <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(input, undefined, true); }} className="flex space-x-2">
               <input 
                 type="text"
                 value={input}
