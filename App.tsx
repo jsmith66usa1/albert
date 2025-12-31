@@ -346,7 +346,7 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col h-[100dvh] bg-zinc-950 text-zinc-100 font-sans overflow-hidden">
-      <header className="bg-zinc-900/90 backdrop-blur-xl p-3 md:p-4 shadow-2xl flex items-center justify-between z-40 border-b border-zinc-800">
+      <header className="bg-zinc-900/90 backdrop-blur-xl p-3 md:p-4 shadow-2xl flex items-center justify-between z-40 border-b border-zinc-800 pt-[calc(env(safe-area-inset-top)+0.75rem)] md:pt-4">
         <div className="flex items-center space-x-3 md:space-x-4">
           <div className="w-8 h-8 md:w-10 md:h-10 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white border border-indigo-400 shadow-[0_0_15px_rgba(79,70,229,0.4)] text-xs md:text-base">E=mc²</div>
           <div>
@@ -392,9 +392,9 @@ const App: React.FC = () => {
       </header>
 
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-        <div className="w-full h-[35vh] md:h-auto md:w-[55%] bg-black flex flex-col items-center justify-center relative shadow-[inset_-20px_0_60px_rgba(0,0,0,0.9)] z-10 shrink-0">
+        <div className="w-full h-[40vh] md:h-auto md:w-[55%] bg-black flex flex-col items-center justify-center relative shadow-[inset_-20px_0_60px_rgba(0,0,0,0.9)] z-10 shrink-0">
           <div className="absolute inset-0 opacity-10 pointer-events-none overflow-hidden chalkboard-bg"></div>
-          <div className="relative w-[95%] h-[90%] md:w-[92%] md:h-[85%] border border-zinc-800/50 rounded-xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)] bg-zinc-900 group">
+          <div className="relative w-[95%] h-[92%] md:w-[92%] md:h-[85%] border border-zinc-800/50 rounded-xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)] bg-zinc-900 group">
              {isGeneratingImage && (
                <div className="absolute inset-0 bg-zinc-950/80 z-20 flex items-center justify-center backdrop-blur-md">
                   <div className="flex flex-col items-center p-4">
@@ -406,7 +406,7 @@ const App: React.FC = () => {
              <img 
                 src={currentImage} 
                 alt="Mathematical Visualization" 
-                className="w-full h-full object-cover transition-opacity duration-700" 
+                className="w-full h-full object-contain md:object-cover transition-opacity duration-700" 
                 style={{ opacity: isGeneratingImage ? 0.3 : 1 }}
                 onError={(e) => {
                    setCurrentImage(INITIAL_IMAGE);
@@ -459,7 +459,7 @@ const App: React.FC = () => {
             </div>
           )}
 
-          <div className="p-3 md:p-5 bg-zinc-950 border-t border-zinc-800">
+          <div className="p-3 md:p-5 bg-zinc-950 border-t border-zinc-800 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:pb-5">
             {!isStreaming && suggestions.length > 0 && (
               <div className="flex flex-wrap gap-1 md:gap-2 mb-3 md:mb-4 items-center overflow-x-auto pb-1 no-scrollbar">
                 {suggestions.map((s, i) => (
