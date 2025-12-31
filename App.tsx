@@ -346,34 +346,29 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col h-[100dvh] bg-zinc-950 text-zinc-100 font-sans overflow-hidden">
-      <header className="bg-zinc-900/90 backdrop-blur-xl p-4 shadow-2xl flex items-center justify-between z-40 border-b border-zinc-800">
-        <div className="flex items-center space-x-4">
-          <div className="w-10 h-10 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white border border-indigo-400 shadow-[0_0_15px_rgba(79,70,229,0.4)]">E=mc²</div>
+      <header className="bg-zinc-900/90 backdrop-blur-xl p-3 md:p-4 shadow-2xl flex items-center justify-between z-40 border-b border-zinc-800">
+        <div className="flex items-center space-x-3 md:space-x-4">
+          <div className="w-8 h-8 md:w-10 md:h-10 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white border border-indigo-400 shadow-[0_0_15px_rgba(79,70,229,0.4)] text-xs md:text-base">E=mc²</div>
           <div>
-            <h1 className="text-lg md:text-xl font-bold tracking-tight font-['Playfair_Display'] text-white leading-none">Einstein's Universe</h1>
-            <p className="text-[10px] text-indigo-400 font-mono tracking-[0.3em] uppercase mt-1">History of Mathematics</p>
+            <h1 className="text-sm md:text-xl font-bold tracking-tight font-['Playfair_Display'] text-white leading-none">Einstein's Universe</h1>
+            <p className="text-[8px] md:text-[10px] text-indigo-400 font-mono tracking-[0.3em] uppercase mt-1">History of Mathematics</p>
           </div>
         </div>
         
         <div className="flex items-center bg-zinc-800/50 rounded-xl p-1 border border-zinc-700/50 space-x-1 shadow-inner relative">
-          {audioState === 'error_quota' && (
-            <div className="absolute -top-10 right-0 bg-amber-900/90 border border-amber-600 text-amber-100 text-[10px] px-3 py-1 rounded-lg animate-bounce shadow-lg whitespace-nowrap">
-              The Professor is currently resting his voice
-            </div>
-          )}
           <button 
             onClick={handleHearSpeak}
-            className={`p-2.5 rounded-lg transition-all flex items-center space-x-2 ${audioState === 'playing' || audioState === 'loading' ? 'bg-indigo-600 text-white shadow-[0_0_15px_rgba(79,70,229,0.4)]' : audioState === 'error_quota' ? 'bg-amber-900 text-amber-200' : 'text-zinc-400 hover:bg-zinc-700 hover:text-white'}`}
+            className={`p-2 md:p-2.5 rounded-lg transition-all flex items-center space-x-2 ${audioState === 'playing' || audioState === 'loading' ? 'bg-indigo-600 text-white shadow-[0_0_15px_rgba(79,70,229,0.4)]' : audioState === 'error_quota' ? 'bg-amber-900 text-amber-200' : 'text-zinc-400 hover:bg-zinc-700 hover:text-white'}`}
             title="Professor Speak"
           >
             {audioState === 'playing' ? (
-               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 md:h-5 md:w-5 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
                </svg>
             ) : audioState === 'loading' ? (
-               <div className="w-5 h-5 border-2 border-indigo-300 border-t-transparent rounded-full animate-spin"></div>
+               <div className="w-4 h-4 md:w-5 md:h-5 border-2 border-indigo-300 border-t-transparent rounded-full animate-spin"></div>
             ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 md:h-5 md:w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5L6 9H2v6h4l5 4V5z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728" />
               </svg>
@@ -385,10 +380,10 @@ const App: React.FC = () => {
           
           <button 
             onClick={() => openMenu('timeline')} 
-            className="p-2.5 text-zinc-400 rounded-lg hover:bg-zinc-700 hover:text-white transition-all flex items-center space-x-2"
+            className="p-2 md:p-2.5 text-zinc-400 rounded-lg hover:bg-zinc-700 hover:text-white transition-all flex items-center space-x-2"
             title="Mathematical Timeline"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 md:h-5 md:w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16m-7 6h7" />
             </svg>
             <span className="hidden sm:inline text-[10px] font-bold uppercase tracking-widest px-1">Timeline</span>
@@ -397,14 +392,14 @@ const App: React.FC = () => {
       </header>
 
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-        <div className="w-full md:w-[55%] bg-black flex flex-col items-center justify-center relative shadow-[inset_-20px_0_60px_rgba(0,0,0,0.9)] z-10">
+        <div className="w-full h-[35vh] md:h-auto md:w-[55%] bg-black flex flex-col items-center justify-center relative shadow-[inset_-20px_0_60px_rgba(0,0,0,0.9)] z-10 shrink-0">
           <div className="absolute inset-0 opacity-10 pointer-events-none overflow-hidden chalkboard-bg"></div>
-          <div className="relative w-[92%] h-[85%] border border-zinc-800/50 rounded-xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)] bg-zinc-900 group">
+          <div className="relative w-[95%] h-[90%] md:w-[92%] md:h-[85%] border border-zinc-800/50 rounded-xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)] bg-zinc-900 group">
              {isGeneratingImage && (
                <div className="absolute inset-0 bg-zinc-950/80 z-20 flex items-center justify-center backdrop-blur-md">
-                  <div className="flex flex-col items-center">
-                    <div className="w-16 h-16 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-                    <span className="mt-4 text-indigo-400 text-[10px] font-mono uppercase tracking-[0.4em] text-center px-6 animate-pulse">Calculating Visual Geometry...</span>
+                  <div className="flex flex-col items-center p-4">
+                    <div className="w-10 h-10 md:w-16 md:h-16 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                    <span className="mt-4 text-indigo-400 text-[8px] md:text-[10px] font-mono uppercase tracking-[0.4em] text-center px-6 animate-pulse">Calculating Visual Geometry...</span>
                   </div>
                </div>
              )}
@@ -414,39 +409,38 @@ const App: React.FC = () => {
                 className="w-full h-full object-cover transition-opacity duration-700" 
                 style={{ opacity: isGeneratingImage ? 0.3 : 1 }}
                 onError={(e) => {
-                   console.error("Image failed to load in UI, falling back to initial.");
                    setCurrentImage(INITIAL_IMAGE);
                 }}
              />
-             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-zinc-950 via-zinc-950/70 to-transparent p-10 pointer-events-none">
-                <div className="flex items-center space-x-2 mb-2">
-                    <span className="h-px w-6 bg-indigo-500"></span>
-                    <p className="text-indigo-400 text-[10px] font-mono tracking-[0.3em] uppercase font-bold">Scientific Insight</p>
+             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-zinc-950 via-zinc-950/70 to-transparent p-4 md:p-10 pointer-events-none">
+                <div className="flex items-center space-x-2 mb-1 md:mb-2">
+                    <span className="h-px w-4 md:w-6 bg-indigo-500"></span>
+                    <p className="text-indigo-400 text-[8px] md:text-[10px] font-mono tracking-[0.3em] uppercase font-bold">Scientific Insight</p>
                 </div>
-                <h3 className="text-white text-2xl md:text-3xl font-serif italic leading-tight drop-shadow-xl">{currentTopicLabel}</h3>
+                <h3 className="text-white text-lg md:text-3xl font-serif italic leading-tight drop-shadow-xl line-clamp-2">{currentTopicLabel}</h3>
              </div>
           </div>
         </div>
 
-        <div className="w-full md:w-[45%] flex flex-col bg-zinc-900 relative border-l border-zinc-800">
+        <div className="w-full flex-1 md:w-[45%] flex flex-col bg-zinc-900 relative border-l border-zinc-800 overflow-hidden">
           <ChatInterface messages={messages} isTyping={isStreaming} />
           
           {isMenuOpen && (
-            <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-6 animate-in fade-in duration-300" onClick={() => setIsMenuOpen(false)}>
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-4 md:p-6 animate-in fade-in duration-300" onClick={() => setIsMenuOpen(false)}>
               <div className="bg-zinc-900 border border-zinc-800 w-full max-w-2xl max-h-[85vh] rounded-3xl shadow-[0_0_100px_rgba(0,0,0,0.9)] overflow-hidden flex flex-col animate-in zoom-in-95 duration-500 relative" onClick={(e) => e.stopPropagation()}>
-                <div className="p-8 border-b border-zinc-800 flex justify-between items-start">
+                <div className="p-6 md:p-8 border-b border-zinc-800 flex justify-between items-start">
                   <div>
-                    <h2 className="text-3xl font-bold text-white font-['Playfair_Display']">{activeMenuType === 'timeline' ? 'Mathematical Timeline' : "Professor's FAQs"}</h2>
-                    <p className="text-zinc-500 text-xs uppercase tracking-[0.3em] mt-3 font-mono">{activeMenuType === 'timeline' ? 'The evolution of logic' : 'Inquire further into history'}</p>
+                    <h2 className="text-xl md:text-3xl font-bold text-white font-['Playfair_Display']">{activeMenuType === 'timeline' ? 'Mathematical Timeline' : "Professor's FAQs"}</h2>
+                    <p className="text-zinc-500 text-[10px] uppercase tracking-[0.3em] mt-2 font-mono">{activeMenuType === 'timeline' ? 'The evolution of logic' : 'Inquire further into history'}</p>
                   </div>
                   <button onClick={() => setIsMenuOpen(false)} className="p-2 text-zinc-500 hover:text-white transition-all transform hover:rotate-90">
-                     <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 md:h-8 md:w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
                      </svg>
                   </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-8 space-y-4 custom-scrollbar">
+                <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-3 md:space-y-4 custom-scrollbar">
                   {(activeMenuType === 'timeline' ? SECTIONS : dynamicFAQs).map((opt) => (
                     <button
                       key={opt.id}
@@ -455,9 +449,9 @@ const App: React.FC = () => {
                           else handleSendMessage(opt.prompt, (opt as any).label, true);
                           setIsMenuOpen(false);
                       }}
-                      className={`w-full text-left p-6 border transition-all rounded-2xl group relative overflow-hidden flex flex-col justify-center ${opt.id === 'stop' ? 'border-rose-900/30 bg-rose-950/5 text-rose-300 hover:bg-rose-950/20' : 'border-zinc-800 bg-zinc-800/40 text-zinc-100 hover:bg-indigo-950/30 hover:border-indigo-500/50 hover:scale-[1.01]'}`}
+                      className={`w-full text-left p-4 md:p-6 border transition-all rounded-2xl group relative overflow-hidden flex flex-col justify-center ${opt.id === 'stop' ? 'border-rose-900/30 bg-rose-950/5 text-rose-300 hover:bg-rose-950/20' : 'border-zinc-800 bg-zinc-800/40 text-zinc-100 hover:bg-indigo-950/30 hover:border-indigo-500/50 hover:scale-[1.01]'}`}
                     >
-                      <div className="font-bold text-xl group-hover:text-white">{opt.label}</div>
+                      <div className="font-bold text-base md:text-xl group-hover:text-white">{opt.label}</div>
                     </button>
                   ))}
                 </div>
@@ -465,9 +459,9 @@ const App: React.FC = () => {
             </div>
           )}
 
-          <div className="p-5 bg-zinc-950 border-t border-zinc-800">
+          <div className="p-3 md:p-5 bg-zinc-950 border-t border-zinc-800">
             {!isStreaming && suggestions.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-4 items-center">
+              <div className="flex flex-wrap gap-1 md:gap-2 mb-3 md:mb-4 items-center overflow-x-auto pb-1 no-scrollbar">
                 {suggestions.map((s, i) => (
                     <button
                       key={i}
@@ -475,7 +469,7 @@ const App: React.FC = () => {
                         if (s.text === "OPEN_FAQ_MENU") openMenu('faqs');
                         else handleSendMessage(s.text, s.label, true);
                       }}
-                      className={`px-4 py-2 text-[11px] font-bold rounded-lg transition-all border font-mono tracking-tight ${s.label.startsWith('Next:') ? 'bg-indigo-900 border-indigo-400 text-white hover:bg-indigo-800' : 'bg-zinc-800 border-zinc-700 hover:bg-zinc-700 text-zinc-400'}`}
+                      className={`px-3 py-1.5 md:px-4 md:py-2 text-[9px] md:text-[11px] font-bold rounded-lg transition-all border font-mono tracking-tight whitespace-nowrap ${s.label.startsWith('Next:') ? 'bg-indigo-900 border-indigo-400 text-white hover:bg-indigo-800' : 'bg-zinc-800 border-zinc-700 hover:bg-zinc-700 text-zinc-400'}`}
                     >
                       {s.label}
                     </button>
@@ -487,16 +481,16 @@ const App: React.FC = () => {
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask the Professor about the universe..."
-                className="flex-1 bg-zinc-900 border border-zinc-800 px-5 py-4 outline-none font-sans text-sm rounded-xl text-white placeholder-zinc-600 transition-all focus:ring-1 focus:ring-indigo-500"
+                placeholder="Ask Professor..."
+                className="flex-1 bg-zinc-900 border border-zinc-800 px-4 md:px-5 py-3 md:py-4 outline-none font-sans text-xs md:text-sm rounded-xl text-white placeholder-zinc-600 transition-all focus:ring-1 focus:ring-indigo-500"
                 disabled={isStreaming}
               />
               <button 
                 type="submit"
                 disabled={!input.trim() || isStreaming}
-                className="bg-indigo-600 text-white px-8 py-4 font-bold hover:bg-indigo-500 transition-all disabled:opacity-50 rounded-xl flex items-center justify-center min-w-[120px]"
+                className="bg-indigo-600 text-white px-4 md:px-8 py-3 md:py-4 font-bold hover:bg-indigo-500 transition-all disabled:opacity-50 rounded-xl flex items-center justify-center min-w-[90px] md:min-w-[120px] text-xs md:text-base"
               >
-                {isStreaming ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : "Investigate"}
+                {isStreaming ? <div className="w-4 h-4 md:w-5 md:h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : "Investigate"}
               </button>
             </form>
           </div>

@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef } from 'react';
 import { ChatMessage } from '../types';
 
@@ -15,7 +14,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, isTyping }) => 
     const triggerMathTypeset = () => {
       const MathJax = (window as any).MathJax;
       if (containerRef.current && MathJax && MathJax.typesetPromise) {
-        // We debounce math rendering slightly to avoid layout thrashing during fast streaming
         if (mathTimerRef.current) window.clearTimeout(mathTimerRef.current);
         
         mathTimerRef.current = window.setTimeout(() => {
@@ -28,8 +26,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, isTyping }) => 
 
     triggerMathTypeset();
 
-    // Forced Top Scrolling: Ensuring the user always sees the start of the Professor's lecture.
-    // We disable the previous "scroll to bottom" logic to satisfy the request to keep it at the top.
+    // Forced Top Scrolling: Since we now reverse the list visually to keep text at the top,
+    // we scroll to 0 to show the newest messages which are at the start of the list.
     if (containerRef.current) {
       containerRef.current.scrollTo({ top: 0, behavior: 'auto' });
     }
@@ -46,45 +44,49 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, isTyping }) => 
       .replace(/\[CHAPTER_COMPLETED:.*?\]/g, '');
   };
 
+  // Reverse messages so newest is at the top of the container
+  const reversedMessages = [...messages].reverse();
+
   return (
     <div 
       ref={containerRef}
-      className="flex-1 overflow-y-auto p-5 space-y-6 bg-zinc-950/50 relative scroll-auto flex flex-col justify-start custom-scrollbar tex2jax_process" 
+      className="flex-1 overflow-y-auto p-4 md:p-5 space-y-4 md:space-y-6 bg-zinc-950/30 relative flex flex-col justify-start custom-scrollbar tex2jax_process" 
     >
-      {messages.map((msg) => (
+      {isTyping && (
+        <div className="flex justify-start pb-2">
+           <div className="bg-zinc-900 border border-zinc-800 p-3 md:p-4 rounded-xl rounded-tl-none shadow-xl flex items-center space-x-2">
+             <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+             <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+             <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+             <span className="text-[9px] md:text-[10px] font-mono font-bold text-indigo-400 uppercase tracking-widest ml-1">Professor is thinking</span>
+           </div>
+        </div>
+      )}
+
+      {reversedMessages.map((msg) => (
         <div
           key={msg.id}
           className={`flex w-full animate-in fade-in slide-in-from-top-4 duration-500 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
         >
           <div
-            className={`max-w-[90%] md:max-w-[85%] p-5 rounded-xl shadow-lg transition-all ${
+            className={`max-w-[92%] md:max-w-[85%] p-4 md:p-5 rounded-xl shadow-lg transition-all ${
               msg.role === 'user'
-                ? 'bg-indigo-900/40 text-white rounded-tr-none border border-indigo-700/30 text-xs font-mono italic opacity-60'
+                ? 'bg-indigo-900/30 text-white rounded-tr-none border border-indigo-700/20 text-[10px] md:text-xs font-mono italic opacity-50'
                 : 'bg-zinc-900 border border-zinc-800 text-zinc-50 rounded-tl-none border-l-2 border-l-indigo-500 shadow-xl'
             }`}
           >
             {msg.role === 'model' ? (
-               <div className="whitespace-pre-wrap font-serif leading-relaxed text-base lg:text-lg selection:bg-indigo-900/50 text-zinc-200">
+               <div className="whitespace-pre-wrap font-serif leading-relaxed text-sm md:text-base lg:text-lg selection:bg-indigo-900/50 text-zinc-200">
                  {cleanText(msg.text)}
                </div>
             ) : (
-              <div className="text-sm font-sans">{msg.text}</div>
+              <div className="text-xs font-sans">{msg.text}</div>
             )}
           </div>
         </div>
       ))}
       
-      {isTyping && (
-        <div className="flex justify-start pb-4">
-           <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-xl rounded-tl-none shadow-xl flex items-center space-x-2">
-             <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-             <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-             <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-             <span className="text-[10px] font-mono font-bold text-indigo-400 uppercase tracking-widest ml-1">Professor is writing</span>
-           </div>
-        </div>
-      )}
-      <div className="h-10 shrink-0" />
+      <div className="h-4 shrink-0" />
     </div>
   );
 };
