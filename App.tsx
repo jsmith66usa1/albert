@@ -108,6 +108,20 @@ const App: React.FC = () => {
     }
   };
 
+  const playLatestSpeech = () => {
+    // Find the last einstein message index
+    let lastIdx = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'einstein') {
+        lastIdx = i;
+        break;
+      }
+    }
+    if (lastIdx !== -1) {
+      playSpeech(messages[lastIdx].text, lastIdx);
+    }
+  };
+
   const handleAction = async (promptText: string, eraToSet?: Era) => {
     setIsLoading(true);
     const history = messages.map(m => ({
@@ -212,7 +226,6 @@ const App: React.FC = () => {
                 onError={(e) => { e.currentTarget.src = "https://placehold.co/400x400/18181b/indigo?text=Einstein"; }}
               />
             </div>
-            {/* Scientific Overlay Elements */}
             <div className="absolute -top-4 -right-4 w-12 h-12 border-t-2 border-r-2 border-indigo-500/50 rounded-tr-2xl" />
             <div className="absolute -bottom-4 -left-4 w-12 h-12 border-b-2 border-l-2 border-indigo-500/50 rounded-bl-2xl" />
           </div>
@@ -261,39 +274,58 @@ const App: React.FC = () => {
       </div>
 
       {/* Header */}
-      <header className="h-16 flex items-center justify-between px-6 glass z-40 shadow-lg">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-2xl bg-indigo-600 flex items-center justify-center ring-4 ring-indigo-500/10 rotate-3 transition-transform hover:rotate-0">
-            <span className="text-white text-[12px] font-black italic">AE</span>
+      <header className="h-20 flex items-center justify-between px-8 glass z-40 shadow-xl border-b border-theme">
+        <div className="flex items-center gap-4">
+          <div className="w-10 h-10 rounded-2xl bg-indigo-600 flex items-center justify-center ring-4 ring-indigo-500/10 rotate-3 transition-transform hover:rotate-0 shadow-lg">
+            <span className="text-white text-[14px] font-black italic">AE</span>
           </div>
-          <h1 className="serif text-xl font-black tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 animate-gradient hidden sm:block">
+          <h1 className="serif text-2xl font-black tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 animate-gradient hidden lg:block">
             Einstein's Universe
           </h1>
         </div>
         
         <div className="flex items-center gap-3">
+          {/* Global Speak Button at top of the page */}
+          <button 
+            onClick={playLatestSpeech}
+            className={`flex items-center gap-3 px-5 py-3 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] transition-all border shadow-sm ${
+              isAudioPlaying 
+                ? 'bg-red-500/10 text-red-500 border-red-500/30 animate-pulse' 
+                : 'bg-indigo-600 text-white border-indigo-400 hover:bg-indigo-500 hover:shadow-indigo-500/20 active:scale-95'
+            }`}
+          >
+            {isAudioPlaying ? (
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+            )}
+            {isAudioPlaying ? 'Stop Speaking' : 'Listen to Einstein'}
+          </button>
+
+          <div className="h-8 w-px bg-theme mx-2" />
+
           {/* Era Dropdown */}
           <div className="relative" ref={dropdownRef}>
             <button
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-              className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-zinc-100 dark:bg-zinc-800/50 border border-theme hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-all text-xs font-black uppercase tracking-widest text-indigo-500 shadow-sm"
+              className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-zinc-100 dark:bg-zinc-800/50 border border-theme hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-all text-xs font-black uppercase tracking-widest text-indigo-500 shadow-sm"
             >
-              <span className="hidden md:inline">Chapter:</span> {currentChapter?.id}
+              <span className="hidden md:inline text-zinc-500">Era:</span> {currentChapter?.id}
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform duration-300 ${isDropdownOpen ? 'rotate-180' : ''}`}><path d="m6 9 6 6 6-6"/></svg>
             </button>
             
             {isDropdownOpen && (
-              <div className="absolute top-full mt-3 right-0 w-72 glass rounded-3xl border border-theme shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden py-3 animate-in fade-in zoom-in-95 duration-200 z-50">
-                <div className="px-4 pb-2 mb-2 border-b border-theme">
-                  <span className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Select Era</span>
+              <div className="absolute top-full mt-3 right-0 w-80 glass rounded-[2rem] border border-theme shadow-[0_30px_60px_rgba(0,0,0,0.5)] overflow-hidden py-4 animate-in fade-in zoom-in-95 duration-200 z-50">
+                <div className="px-5 pb-3 mb-3 border-b border-theme">
+                  <span className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Historical Timeline</span>
                 </div>
                 {CHAPTERS.map((ch, idx) => (
                   <button
                     key={ch.id}
                     onClick={() => startEra(ch.id)}
-                    className={`w-full px-4 py-3 text-left flex items-center gap-4 hover:bg-indigo-600/10 transition-colors ${currentEra === ch.id ? 'bg-indigo-600/10' : ''}`}
+                    className={`w-full px-5 py-3.5 text-left flex items-center gap-5 hover:bg-indigo-600/10 transition-colors ${currentEra === ch.id ? 'bg-indigo-600/10' : ''}`}
                   >
-                    <span className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black border transition-colors ${currentEra === ch.id ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-zinc-800/20 border-zinc-700 text-zinc-500'}`}>
+                    <span className={`w-8 h-8 rounded-xl flex items-center justify-center text-[12px] font-black border transition-colors ${currentEra === ch.id ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-zinc-800/20 border-zinc-700 text-zinc-500'}`}>
                       {idx + 1}
                     </span>
                     <div className="flex flex-col">
@@ -306,17 +338,15 @@ const App: React.FC = () => {
             )}
           </div>
 
-          <div className="h-6 w-px bg-theme mx-1" />
-
           <button
             onClick={() => setIsDarkMode(!isDarkMode)}
-            className="w-10 h-10 flex items-center justify-center rounded-2xl bg-zinc-100 dark:bg-zinc-800/50 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors border border-theme shadow-sm"
+            className="w-12 h-12 flex items-center justify-center rounded-2xl bg-zinc-100 dark:bg-zinc-800/50 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors border border-theme shadow-sm"
             title={isDarkMode ? "Old Paper Mode" : "Dark Space Mode"}
           >
             {isDarkMode ? (
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-yellow-400"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-yellow-400"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
             ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-600"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-600"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
             )}
           </button>
         </div>
@@ -402,7 +432,7 @@ const App: React.FC = () => {
                 type="text"
                 value={userInput}
                 onChange={(e) => setUserInput(e.target.value)}
-                placeholder="Ask the Professor..."
+                placeholder="Pose a question to the Professor..."
                 className="w-full bg-input border border-theme rounded-[2rem] pl-8 pr-28 py-5 text-sm focus:outline-none focus:ring-4 focus:ring-indigo-600/10 transition-all shadow-xl backdrop-blur-3xl"
               />
               <button
@@ -410,7 +440,7 @@ const App: React.FC = () => {
                 disabled={isLoading || !userInput.trim()}
                 className="absolute right-4 top-1/2 -translate-y-1/2 bg-indigo-600 hover:bg-indigo-500 text-white disabled:bg-zinc-800 disabled:text-zinc-600 px-6 py-2.5 rounded-2xl font-black text-[9px] uppercase tracking-widest transition-all active:scale-95 shadow-xl shadow-indigo-600/20"
               >
-                Send
+                Query
               </button>
             </form>
           </div>
@@ -447,12 +477,10 @@ const App: React.FC = () => {
                     <p className="text-[12px] text-zinc-500 mono uppercase tracking-[0.4em] font-black">Waveform Awaiting Manifestation</p>
                   </div>
                 )}
-                {/* Chalkboard Dust Texture Overlay */}
                 <div className="absolute inset-0 pointer-events-none mix-blend-screen opacity-10 bg-[url('https://www.transparenttextures.com/patterns/black-chalk.png')]" />
                 <div className="absolute inset-0 border-[32px] border-zinc-900/50 pointer-events-none mix-blend-overlay" />
               </div>
               
-              {/* Radial Ambient Glow */}
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[120%] bg-indigo-600/5 blur-[120px] rounded-full pointer-events-none transition-opacity duration-1000 opacity-0 group-hover:opacity-100" />
             </div>
             
