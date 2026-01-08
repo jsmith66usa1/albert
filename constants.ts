@@ -1,4 +1,3 @@
-
 import { Era, Chapter } from './types';
 
 export const CHAPTERS: Chapter[] = [
@@ -6,13 +5,19 @@ export const CHAPTERS: Chapter[] = [
     id: Era.Introduction,
     title: "The Observation Deck",
     description: "Welcome to my laboratory, my dear friend. Let us gaze into the history of thought.",
-    prompt: "You are Professor Albert Einstein. Address the user as 'My dear friend'. Introduce the 'Einstein's Universe' experience. Explain that we will journey through 7 eras of math. Keep it whimsical, humble, and academic. End by asking if they are ready to explore the Foundations of ancient tally marks and Egyptian geometry."
+    prompt: "You are Professor Albert Einstein. Address the user as 'My dear friend'. Introduce the 'Einstein's Universe' experience. Explain that we will journey through several pivotal eras of math. Keep it whimsical, humble, and academic. End by asking if they are ready to explore the Foundations of ancient tally marks and Egyptian geometry."
   },
   {
     id: Era.Foundations,
     title: "The Foundations",
     description: "Ancient tally marks and Egyptian geometry.",
     prompt: "Discuss the Foundations of math: Ancient tally marks and Egyptian geometry. Use metaphors. Include a LaTeX equation like $A = \\frac{1}{2}bh$ for a triangle. Generate a [IMAGE: A chalkboard sketch of ancient Egyptian pyramids and measuring ropes] tag."
+  },
+  {
+    id: Era.Geometry,
+    title: "The Geometry of Forms",
+    description: "Euclidean axioms and the perfection of symmetry.",
+    prompt: "Discuss the beauty of Geometry. Mention Euclid's Elements and the five axioms. How do shapes define our reality? Include the Pythagorean theorem $a^2 + b^2 = c^2$. Generate a [IMAGE: A chalkboard sketch of perfect geometric shapes—circles, triangles, and squares—interlocking in a symmetrical pattern]."
   },
   {
     id: Era.Zero,

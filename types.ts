@@ -1,7 +1,7 @@
-
 export enum Era {
   Introduction = 'Introduction',
   Foundations = 'Foundations',
+  Geometry = 'The Geometry of Forms',
   Zero = 'The Origins of Zero',
   Algebra = 'The Birth of Algebra',
   Calculus = 'The Calculus Revolution',

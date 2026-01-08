@@ -14,13 +14,14 @@ const firebaseConfig = {
 
 let db: any = null;
 try {
-  if (firebaseConfig.databaseURL || firebaseConfig.projectId) {
-    const app = initializeApp(firebaseConfig);
-    const dbUrl = firebaseConfig.databaseURL || (firebaseConfig.projectId ? `https://${firebaseConfig.projectId}-default-rtdb.firebaseio.com/` : undefined);
-    if (dbUrl) db = getDatabase(app, dbUrl);
+  // Use project ID to construct default URL if databaseURL is missing
+  const app = initializeApp(firebaseConfig);
+  const dbUrl = firebaseConfig.databaseURL || (firebaseConfig.projectId ? `https://${firebaseConfig.projectId}-default-rtdb.firebaseio.com/` : undefined);
+  if (dbUrl) {
+    db = getDatabase(app, dbUrl);
   }
 } catch (e) {
-  console.debug("Firebase cache deferred.");
+  console.debug("Firebase initialization deferred. Local cache only mode.");
 }
 
 const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
@@ -34,28 +35,39 @@ async function generateCacheKey(input: string): Promise<string> {
 }
 
 async function getFromCache(category: string, key: string): Promise<any> {
+  // 1. Try Firebase (Global Cache)
   if (db) {
     try {
-      const snapshot = await get(ref(db, `cache/${category}/${key}`));
-      if (snapshot.exists()) return snapshot.val();
+      const snapshot = await get(ref(db, `einstein_global_cache/${category}/${key}`));
+      if (snapshot.exists()) {
+        const val = snapshot.val();
+        // Also populate local storage for offline speed
+        try { localStorage.setItem(`einstein_local_${category}_${key}`, val); } catch(e){}
+        return val;
+      }
     } catch (e) {
-      console.warn("Firebase cache miss", e);
+      console.warn("Global cache check failed", e);
     }
   }
+
+  // 2. Fallback to LocalStorage
   try {
-    return localStorage.getItem(`einstein_cache_${category}_${key}`);
+    return localStorage.getItem(`einstein_local_${category}_${key}`);
   } catch (e) {
     return null;
   }
 }
 
 async function saveToCache(category: string, key: string, data: string): Promise<void> {
+  // 1. Save Local
   try {
-    localStorage.setItem(`einstein_cache_${category}_${key}`, data);
+    localStorage.setItem(`einstein_local_${category}_${key}`, data);
   } catch (e) {}
+
+  // 2. Save Global (Firebase)
   if (db) {
     try {
-      await set(ref(db, `cache/${category}/${key}`), data);
+      await set(ref(db, `einstein_global_cache/${category}/${key}`), data);
     } catch (e) {}
   }
 }
@@ -71,7 +83,7 @@ export async function generateEinsteinResponse(prompt: string, history: { role: 
     model: 'gemini-3-pro-preview',
     contents: history.concat([{ role: 'user', parts: [{ text: prompt }] }]),
     config: {
-      systemInstruction: "You are Professor Albert Einstein. Speak with whimsical German-accented warmth. Be concise and elegant. Address user as 'My dear friend'. Use LaTeX for equations in $ or $$. If a new concept is introduced, add [IMAGE: description] for a chalkboard diagram.",
+      systemInstruction: "You are Professor Albert Einstein. Speak with whimsical German-accented warmth. Be concise and elegant. Address user as 'My dear friend'. Use LaTeX for equations in $ or $$. If a new concept is introduced, add [IMAGE: description] for a chalkboard diagram. Use simple, beautiful analogies.",
       temperature: 0.7,
     },
   });
@@ -89,7 +101,7 @@ export async function generateChalkboardImage(prompt: string): Promise<string> {
   const ai = getAI();
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash-image',
-    contents: [{ text: `A clean, professional chalkboard scientific diagram: ${prompt}. Minimalist white chalk lines on dark dusty background. Elegant handwriting.` }],
+    contents: [{ text: `A clean, professional chalkboard scientific diagram: ${prompt}. Minimalist white chalk lines on dark dusty background. Elegant handwriting. High contrast.` }],
     config: { imageConfig: { aspectRatio: "1:1" } }
   });
 
@@ -107,6 +119,7 @@ export async function generateChalkboardImage(prompt: string): Promise<string> {
 }
 
 export async function generateEinsteinSpeech(text: string): Promise<string> {
+  // Remove image tags for clean TTS
   const speechText = text.replace(/\[IMAGE:.*?\]/g, '').trim();
   const key = await generateCacheKey(speechText);
   const cached = await getFromCache('audio', key);
@@ -115,7 +128,7 @@ export async function generateEinsteinSpeech(text: string): Promise<string> {
   const ai = getAI();
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash-preview-tts",
-    contents: [{ parts: [{ text: `Speak warmly and intellectually: ${speechText}` }] }],
+    contents: [{ parts: [{ text: `Say this with a gentle, wise, elderly German intellectual tone: ${speechText}` }] }],
     config: {
       responseModalities: [Modality.AUDIO],
       speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Charon' } } },

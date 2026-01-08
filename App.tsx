@@ -59,8 +59,8 @@ const App: React.FC = () => {
 
   // Auto-scroll logic for new messages vs Era transitions
   useEffect(() => {
-    // Only auto-scroll to bottom if we have messages
-    if (messages.length > 0) {
+    // Scroll to bottom for new messages in the same era
+    if (messages.length > 1) {
       chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
     if ((window as any).MathJax) {
@@ -170,10 +170,11 @@ const App: React.FC = () => {
 
       if (isNewEra) {
         setMessages([newMessage]);
-        // Reset scroll to top for new era
+        // Critical: Reset scroll to top for new era
         if (chatContainerRef.current) {
           chatContainerRef.current.scrollTop = 0;
         }
+        window.scrollTo(0, 0);
       } else {
         setMessages(prev => [...prev, newMessage]);
       }
@@ -478,36 +479,36 @@ const App: React.FC = () => {
         </section>
 
         <aside className="flex-1 flex flex-col bg-aside overflow-hidden relative shadow-[inset_20px_0_40px_rgba(0,0,0,0.3)]">
-          <div className="p-8 md:p-12 h-full flex flex-col">
-            <div className="flex items-center justify-between mb-8">
+          <div className="p-4 md:p-8 lg:p-12 h-full flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between mb-6 flex-shrink-0">
               <div className="flex items-center gap-4">
                 <div className="w-3 h-3 rounded-full bg-indigo-600 shadow-[0_0_15px_rgba(79,70,229,0.8)]" />
                 <h2 className="serif text-[13px] uppercase tracking-[0.6em] text-indigo-500 font-black">Visual Manifestation</h2>
               </div>
-              <div className="flex gap-4">
+              <div className="hidden sm:flex gap-4">
                  <div className="px-3 py-1 bg-indigo-500/5 rounded-full border border-indigo-500/10 text-[9px] mono text-indigo-400 font-bold uppercase tracking-widest">Scientific Hub</div>
-                 <div className="px-3 py-1 bg-zinc-500/5 rounded-full border border-theme text-[9px] mono text-zinc-500 font-bold uppercase tracking-widest">Resolution: 1024px</div>
+                 <div className="px-3 py-1 bg-zinc-500/5 rounded-full border border-theme text-[9px] mono text-zinc-500 font-bold uppercase tracking-widest">Fitted View</div>
               </div>
             </div>
 
-            <div className="flex-1 flex items-center justify-center relative group min-h-0">
-              <div className="w-full h-full max-w-[900px] max-h-[900px] aspect-square rounded-[3rem] overflow-hidden border border-theme bg-zinc-950 flex items-center justify-center shadow-[0_50px_100px_rgba(0,0,0,0.8)] relative z-10 transition-all duration-1000 group-hover:shadow-[0_60px_120px_rgba(79,70,229,0.2)]">
+            <div className="flex-1 flex items-center justify-center relative group overflow-hidden min-h-0">
+              <div className="w-full h-full rounded-[2.5rem] md:rounded-[3.5rem] overflow-hidden border border-theme bg-zinc-950 flex items-center justify-center shadow-[0_50px_100px_rgba(0,0,0,0.8)] relative z-10 transition-all duration-1000 group-hover:shadow-[0_60px_120px_rgba(79,70,229,0.2)]">
                 {lastImage ? (
                   <img 
                     src={lastImage} 
                     alt="Scientific chalkboard illustration" 
-                    className="w-full h-full object-cover chalkboard-filter transition-all duration-[2000ms] group-hover:scale-105"
+                    className="max-w-full max-h-full w-auto h-auto object-contain chalkboard-filter transition-all duration-[2000ms] group-hover:scale-[1.02]"
                   />
                 ) : (
                   <div className="text-center p-20 opacity-20 group-hover:opacity-40 transition-opacity">
-                    <div className="w-32 h-32 border-4 border-dashed border-zinc-700 rounded-full mx-auto mb-10 flex items-center justify-center rotate-45 group-hover:rotate-0 transition-transform duration-1000">
-                      <div className="w-16 h-16 bg-zinc-800 rounded-full animate-pulse" />
+                    <div className="w-24 h-24 md:w-32 md:h-32 border-4 border-dashed border-zinc-700 rounded-full mx-auto mb-10 flex items-center justify-center rotate-45 group-hover:rotate-0 transition-transform duration-1000">
+                      <div className="w-12 h-12 md:w-16 md:h-16 bg-zinc-800 rounded-full animate-pulse" />
                     </div>
-                    <p className="text-[12px] text-zinc-500 mono uppercase tracking-[0.4em] font-black">Waveform Awaiting Manifestation</p>
+                    <p className="text-[10px] md:text-[12px] text-zinc-500 mono uppercase tracking-[0.4em] font-black">Waveform Awaiting Manifestation</p>
                   </div>
                 )}
                 <div className="absolute inset-0 pointer-events-none mix-blend-screen opacity-10 bg-[url('https://www.transparenttextures.com/patterns/black-chalk.png')]" />
-                <div className="absolute inset-0 border-[32px] border-zinc-900/50 pointer-events-none mix-blend-overlay" />
+                <div className="absolute inset-0 border-[16px] md:border-[32px] border-zinc-900/50 pointer-events-none mix-blend-overlay" />
               </div>
               
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[120%] bg-indigo-600/5 blur-[120px] rounded-full pointer-events-none transition-opacity duration-1000 opacity-0 group-hover:opacity-100" />
