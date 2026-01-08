@@ -1,9 +1,10 @@
+
 import { GoogleGenAI, Modality } from "@google/genai";
-import { initializeApp } from "firebase/app";
+import { initializeApp, getApps, getApp } from "firebase/app";
 import { getDatabase, ref, get, set } from "firebase/database";
 
 const firebaseConfig = {
-  apiKey: process.env.FIREBASE_API_KEY || process.env.API_KEY,
+  apiKey: process.env.API_KEY,
   authDomain: process.env.FIREBASE_AUTH_DOMAIN,
   databaseURL: process.env.FIREBASE_DATABASE_URL,
   projectId: process.env.FIREBASE_PROJECT_ID,
@@ -14,14 +15,15 @@ const firebaseConfig = {
 
 let db: any = null;
 try {
-  // Use project ID to construct default URL if databaseURL is missing
-  const app = initializeApp(firebaseConfig);
+  // Robust initialization: only init if no app exists
+  const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+  // Ensure we have a database URL. If missing, construct the standard one from projectId
   const dbUrl = firebaseConfig.databaseURL || (firebaseConfig.projectId ? `https://${firebaseConfig.projectId}-default-rtdb.firebaseio.com/` : undefined);
   if (dbUrl) {
     db = getDatabase(app, dbUrl);
   }
 } catch (e) {
-  console.debug("Firebase initialization deferred. Global cache may be unavailable.");
+  console.error("Firebase initialization failed:", e);
 }
 
 const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
@@ -35,13 +37,14 @@ async function generateCacheKey(input: string): Promise<string> {
 }
 
 async function getFromCache(category: string, key: string): Promise<any> {
-  // 1. Try Global Firebase Cache (Shared across all users)
+  // 1. Try Global Firebase Cache (Shared across all users permanently)
   if (db) {
     try {
-      const snapshot = await get(ref(db, `einstein_global_v1/${category}/${key}`));
+      const dbRef = ref(db, `einstein_global_v1/${category}/${key}`);
+      const snapshot = await get(dbRef);
       if (snapshot.exists()) {
         const val = snapshot.val();
-        // Sync to local storage for offline support/speed
+        // Local secondary cache for speed
         try { localStorage.setItem(`einstein_local_${category}_${key}`, val); } catch(e){}
         return val;
       }
@@ -50,7 +53,7 @@ async function getFromCache(category: string, key: string): Promise<any> {
     }
   }
 
-  // 2. Fallback to LocalStorage (User-specific fallback)
+  // 2. Fallback to LocalStorage
   try {
     return localStorage.getItem(`einstein_local_${category}_${key}`);
   } catch (e) {
@@ -59,15 +62,18 @@ async function getFromCache(category: string, key: string): Promise<any> {
 }
 
 async function saveToCache(category: string, key: string, data: string): Promise<void> {
+  if (!data) return;
+
   // 1. Save to Local Storage
   try {
     localStorage.setItem(`einstein_local_${category}_${key}`, data);
   } catch (e) {}
 
-  // 2. Save to Global Firebase Cache (Make available to all users)
+  // 2. Save to Global Firebase Cache (Make available to all users globally)
   if (db) {
     try {
-      await set(ref(db, `einstein_global_v1/${category}/${key}`), data);
+      const dbRef = ref(db, `einstein_global_v1/${category}/${key}`);
+      await set(dbRef, data);
     } catch (e) {
       console.warn("Global cache save failed", e);
     }
@@ -85,7 +91,7 @@ export async function generateEinsteinResponse(prompt: string, history: { role: 
     model: 'gemini-3-pro-preview',
     contents: history.concat([{ role: 'user', parts: [{ text: prompt }] }]),
     config: {
-      systemInstruction: "You are Professor Albert Einstein. Speak with whimsical German-accented warmth. Be concise and elegant. Address user as 'My dear friend'. Use LaTeX for equations in $ or $$. If a new concept is introduced, add [IMAGE: description] for a chalkboard diagram. Use simple, beautiful analogies.",
+      systemInstruction: "You are Professor Albert Einstein. Speak with whimsical German-accented warmth. Be concise and elegant. Address user as 'My dear friend'. Use LaTeX for equations. If a new concept is introduced, add [IMAGE: description] for a chalkboard diagram. Use simple, beautiful analogies. You are part of a 'World Brain' - your answers are shared globally with all users.",
       temperature: 0.7,
     },
   });
@@ -103,7 +109,7 @@ export async function generateChalkboardImage(prompt: string): Promise<string> {
   const ai = getAI();
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash-image',
-    contents: [{ text: `A clean, professional chalkboard scientific diagram: ${prompt}. Minimalist white chalk lines on dark dusty background. Elegant handwriting. High contrast.` }],
+    contents: [{ text: `A clean, minimalist chalkboard scientific diagram: ${prompt}. White chalk lines on dark dusty black background. Elegant handwriting. High contrast.` }],
     config: { imageConfig: { aspectRatio: "1:1" } }
   });
 
