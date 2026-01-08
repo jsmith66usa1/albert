@@ -26,6 +26,7 @@ const App: React.FC = () => {
   const [isFaqOpen, setIsFaqOpen] = useState(false);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -56,9 +57,12 @@ const App: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Auto-scroll and MathJax typeset
+  // Auto-scroll logic for new messages vs Era transitions
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Only auto-scroll to bottom if we have messages
+    if (messages.length > 0) {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
     if ((window as any).MathJax) {
       (window as any).MathJax.typeset();
     }
@@ -130,9 +134,11 @@ const App: React.FC = () => {
     }
   };
 
-  const handleAction = async (promptText: string, eraToSet?: Era) => {
+  const handleAction = async (promptText: string, eraToSet?: Era, isNewEra: boolean = false) => {
     setIsLoading(true);
-    const history = messages.map(m => ({
+    
+    // If it's a new era, we pass empty history to the AI to prevent context bleed
+    const history = isNewEra ? [] : messages.map(m => ({
       role: m.role === 'einstein' ? 'model' : 'user',
       parts: [{ text: m.text }]
     }));
@@ -162,7 +168,16 @@ const App: React.FC = () => {
         timestamp: Date.now()
       };
 
-      setMessages(prev => [...prev, newMessage]);
+      if (isNewEra) {
+        setMessages([newMessage]);
+        // Reset scroll to top for new era
+        if (chatContainerRef.current) {
+          chatContainerRef.current.scrollTop = 0;
+        }
+      } else {
+        setMessages(prev => [...prev, newMessage]);
+      }
+
       if (eraToSet) {
         setCurrentEra(eraToSet);
       }
@@ -188,7 +203,6 @@ const App: React.FC = () => {
         break;
     }
     
-    // Add user message to chat for context
     const userMsg: Message = {
       role: 'user',
       text: inquiry,
@@ -203,7 +217,17 @@ const App: React.FC = () => {
     setIsDropdownOpen(false);
     const chapter = CHAPTERS.find(c => c.id === era);
     if (chapter) {
-      handleAction(chapter.prompt, era);
+      // Clear messages immediately for UI feedback
+      setMessages([]);
+      handleAction(chapter.prompt, era, true);
+    }
+  };
+
+  const handleNextChapter = () => {
+    const currentIndex = CHAPTERS.findIndex(c => c.id === currentEra);
+    if (currentIndex !== -1 && currentIndex < CHAPTERS.length - 1) {
+      const nextChapter = CHAPTERS[currentIndex + 1];
+      startEra(nextChapter.id);
     }
   };
 
@@ -236,6 +260,10 @@ const App: React.FC = () => {
       delay: `${Math.random() * 5}s`
     }));
   }, []);
+
+  const isAtLastChapter = useMemo(() => {
+    return currentEra === CHAPTERS[CHAPTERS.length - 1].id;
+  }, [currentEra]);
 
   if (!hasStarted) {
     return (
@@ -381,7 +409,7 @@ const App: React.FC = () => {
 
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden z-10 relative">
         <section className="lg:w-[450px] xl:w-[550px] flex-shrink-0 flex flex-col border-r border-theme bg-zinc-950/20 relative shadow-2xl">
-          <div className="flex-1 overflow-y-auto px-6 md:px-10 py-10 space-y-12 no-scrollbar">
+          <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-6 md:px-10 py-10 space-y-12 no-scrollbar scroll-smooth">
             <div className="text-center pb-6">
               <span className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.5em] mb-2 block">Dialogue Console</span>
               <div className="h-px w-20 bg-indigo-500/20 mx-auto" />
@@ -491,7 +519,7 @@ const App: React.FC = () => {
       <div className="w-full p-6 md:p-8 border-t border-theme glass flex-shrink-0 z-50 bg-inherit relative">
         <div className="max-w-7xl mx-auto w-full">
           {/* Action Row Buttons */}
-          <div className="flex items-center gap-4 mb-6 px-4">
+          <div className="flex flex-wrap items-center gap-4 mb-6 px-4">
              <button 
               onClick={() => handleAction(`Please manifest a new detailed scientific chalkboard diagram for the current topic: ${currentEra}`)}
               disabled={isLoading}
@@ -542,6 +570,15 @@ const App: React.FC = () => {
                   </div>
                 )}
              </div>
+
+             <button 
+              onClick={handleNextChapter}
+              disabled={isLoading || isAtLastChapter}
+              className="flex items-center gap-3 px-6 py-3 rounded-2xl bg-zinc-100 dark:bg-zinc-800/80 border border-theme text-zinc-800 dark:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all text-[10px] font-black uppercase tracking-[0.2em] shadow-lg active:scale-95 disabled:opacity-50"
+             >
+                Next Era
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-500"><path d="m9 18 6-6-6-6"/></svg>
+             </button>
           </div>
 
           <form onSubmit={handleSendMessage} className="relative group">
