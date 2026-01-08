@@ -4,8 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Einstein's Universe</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Fira+Code&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Fira+Code&display=swap" rel="stylesheet">
     <script>
       window.MathJax = {
         tex: {
@@ -21,96 +20,137 @@
     <style>
         :root {
             --bg-color: #0c0c0e;
-            --text-color: #f8fafc;
-            --glass-bg: rgba(24, 24, 27, 0.7);
-            --border-color: rgba(255, 255, 255, 0.08);
-            --chat-einstein-bg: rgba(24, 24, 27, 0.8);
-            --input-bg: rgba(24, 24, 27, 0.5);
-            --aside-bg: rgba(12, 12, 14, 0.6);
+            --text-color: #fafafa;
+            --glass-bg: rgba(20, 20, 23, 0.95);
+            --border-color: rgba(255, 255, 255, 0.12);
+            --chat-einstein-bg: #18181b;
+            --input-bg: #111113;
+            --aside-bg: #09090b;
             --accent: #6366f1;
+            --accent-hover: #4f46e5;
+            --card-shadow: 0 20px 50px rgba(0,0,0,0.5);
         }
 
         body.light-mode {
-            --bg-color: #fcfaf7;
-            --text-color: #1c1917;
-            --glass-bg: rgba(255, 255, 255, 0.8);
-            --border-color: rgba(0, 0, 0, 0.08);
-            --chat-einstein-bg: rgba(255, 255, 255, 0.9);
-            --input-bg: rgba(255, 255, 255, 0.6);
-            --aside-bg: rgba(245, 245, 244, 0.7);
+            --bg-color: #fcfbf9;
+            --text-color: #18181b;
+            --glass-bg: rgba(255, 255, 255, 0.9);
+            --border-color: rgba(0, 0, 0, 0.1);
+            --chat-einstein-bg: #ffffff;
+            --input-bg: #f4f4f5;
+            --aside-bg: #f8f6f2;
             --accent: #4f46e5;
+            --accent-hover: #4338ca;
+            --card-shadow: 0 10px 30px rgba(0,0,0,0.05);
         }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
             background-color: var(--bg-color);
             color: var(--text-color);
             font-family: 'Inter', sans-serif;
+            height: 100vh;
+            width: 100vw;
             overflow: hidden;
-            transition: background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1), color 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: background-color 0.4s ease, color 0.4s ease;
+        }
+
+        #root { height: 100%; width: 100%; }
+
+        .flex { display: flex; }
+        .flex-col { flex-direction: column; }
+        .flex-row { flex-direction: row; }
+        .items-center { align-items: center; }
+        .justify-center { justify-content: center; }
+        .justify-between { justify-content: space-between; }
+        .flex-1 { flex: 1; min-height: 0; }
+        .h-full { height: 100%; }
+        .w-full { width: 100%; }
+        .relative { position: relative; }
+        .absolute { position: absolute; }
+        .hidden { display: none; }
+        .z-40 { z-index: 40; }
+        .z-50 { z-index: 50; }
+        .gap-3 { gap: 0.75rem; }
+        .gap-4 { gap: 1rem; }
+
+        @media (min-width: 1024px) {
+            .lg-flex-row { flex-direction: row; }
+            .lg-block { display: block; }
+            .lg-w-500 { width: 500px; flex-shrink: 0; }
         }
 
         .serif { font-family: 'Playfair Display', serif; }
-        .mono { font-family: 'Fira Code', monospace; }
         
         .glass {
             background: var(--glass-bg);
-            backdrop-filter: blur(16px);
+            backdrop-filter: blur(12px);
             border: 1px solid var(--border-color);
         }
 
-        .border-theme { border-color: var(--border-color); }
+        .border-theme { border: 1px solid var(--border-color); }
         .text-theme { color: var(--text-color); }
+        .bg-theme { background-color: var(--bg-color); }
         .bg-einstein { background-color: var(--chat-einstein-bg); }
         .bg-input { background-color: var(--input-bg); }
         .bg-aside { background-color: var(--aside-bg); }
 
         .chalkboard-filter {
             filter: sepia(0.2) contrast(1.1) brightness(0.9);
-            box-shadow: inset 0 0 100px rgba(0,0,0,0.5);
+            box-shadow: inset 0 0 80px rgba(0,0,0,0.6);
+            border-radius: 2rem;
+            display: block;
         }
 
         body.light-mode .chalkboard-filter {
             filter: sepia(0.05) contrast(1.05) brightness(1);
         }
 
-        /* Era indicator animation */
-        .era-active-glow {
-            box-shadow: 0 0 15px var(--accent);
-        }
-
-        /* MathJax Override for light mode */
-        body.light-mode mjx-container {
-            color: #1c1917 !important;
-        }
-
-        ::-webkit-scrollbar {
-            width: 4px;
-        }
-        ::-webkit-scrollbar-track {
-            background: transparent;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: rgba(128, 128, 128, 0.3);
-            border-radius: 10px;
-        }
-
-        .no-scrollbar::-webkit-scrollbar {
-            display: none;
-        }
-        .no-scrollbar {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(128, 128, 128, 0.2); border-radius: 10px; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
         @keyframes twinkle {
-          0%, 100% { opacity: 0.3; }
-          50% { opacity: 0.8; }
+          0%, 100% { opacity: 0.2; transform: scale(0.8); }
+          50% { opacity: 0.7; transform: scale(1.1); }
         }
         .star {
           position: absolute;
           background: white;
           border-radius: 50%;
           animation: twinkle var(--duration) infinite ease-in-out;
+          pointer-events: none;
+        }
+
+        button {
+            cursor: pointer;
+            border: 1px solid transparent;
+            outline: none;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        button:hover { filter: brightness(1.1); }
+        button:active { transform: scale(0.96); }
+        button:disabled { opacity: 0.3; cursor: not-allowed; }
+
+        input {
+            border: none;
+            outline: none;
+            color: var(--text-color);
+            width: 100%;
+        }
+
+        .msg-container {
+            max-width: 90%;
+            padding: 1.5rem;
+            border-radius: 1.5rem;
+            box-shadow: var(--card-shadow);
+            margin-bottom: 1.5rem;
         }
     </style>
 <script type="importmap">

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Era, Message, Chapter } from './types';
 import { CHAPTERS } from './constants';
@@ -205,7 +204,7 @@ const App: React.FC = () => {
     handleAction(input);
   };
 
-  const stars = useMemo(() => Array.from({ length: 80 }).map((_, i) => ({
+  const stars = useMemo(() => Array.from({ length: 120 }).map((_, i) => ({
     top: `${Math.random() * 100}%`,
     left: `${Math.random() * 100}%`,
     size: `${Math.random() * 2 + 0.5}px`,
@@ -215,115 +214,149 @@ const App: React.FC = () => {
 
   if (!hasStarted) {
     return (
-      <div className="h-screen w-screen bg-[#09090b] flex flex-col items-center justify-center p-6 relative overflow-hidden text-white">
-        <div className="absolute inset-0 pointer-events-none">
+      <div className="h-full w-full flex flex-col items-center justify-center p-6 relative" style={{ backgroundColor: '#09090b', color: '#fff' }}>
+        <div className="absolute" style={{ inset: 0, overflow: 'hidden' }}>
           {stars.map((star, i) => (
-            <div key={i} className="star bg-indigo-300" style={{ top: star.top, left: star.left, width: star.size, height: star.size, '--duration': star.duration, animationDelay: star.delay } as any} />
+            <div key={i} className="star" style={{ top: star.top, left: star.left, width: star.size, height: star.size, '--duration': star.duration, animationDelay: star.delay } as any} />
           ))}
         </div>
-        <div className="max-w-lg w-full glass p-12 rounded-[4rem] border border-white/10 flex flex-col items-center text-center shadow-2xl relative z-10 animate-in fade-in zoom-in-95 duration-1000">
-          <div className="relative group mb-10">
-            <div className="w-56 h-56 rounded-[3rem] border-2 border-indigo-500/40 overflow-hidden bg-zinc-900 rotate-3 transition-transform group-hover:rotate-0 duration-700">
-              <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Albert_Einstein_Head.jpg/480px-Albert_Einstein_Head.jpg" alt="Einstein" className="w-full h-full object-cover grayscale brightness-110 contrast-110" />
-            </div>
+        <div className="glass p-6 flex flex-col items-center text-center relative z-50" style={{ maxWidth: '500px', borderRadius: '4rem', padding: '3rem' }}>
+          <div style={{ marginBottom: '2.5rem', transform: 'rotate(2deg)', borderRadius: '2.5rem', overflow: 'hidden', border: '2px solid rgba(99, 102, 241, 0.4)', width: '200px', height: '200px' }}>
+            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Albert_Einstein_Head.jpg/480px-Albert_Einstein_Head.jpg" alt="Einstein" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'grayscale(1) brightness(1.1)' }} />
           </div>
-          <h1 className="serif text-5xl font-black mb-4 tracking-tight">Einstein's Universe</h1>
-          <p className="text-zinc-400 text-base italic serif leading-relaxed mb-12 px-4">"Imagination is more important than knowledge..."</p>
-          <button onClick={initializeApp} className="group relative w-full py-5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-[2rem] font-black uppercase tracking-[0.3em] text-[11px] transition-all shadow-lg active:scale-95">Initiate Journey</button>
+          <h1 className="serif" style={{ fontSize: '2.5rem', fontWeight: 900, marginBottom: '0.75rem', letterSpacing: '-0.02em' }}>Einstein's Universe</h1>
+          <p className="serif" style={{ color: '#a1a1aa', fontStyle: 'italic', marginBottom: '2.5rem', fontSize: '1rem', lineHeight: 1.5 }}>"Imagination is more important than knowledge..."</p>
+          <button onClick={initializeApp} style={{ width: '100%', padding: '1.25rem', backgroundColor: 'var(--accent)', color: '#fff', borderRadius: '1.5rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.15em', fontSize: '12px' }}>Initiate Thought Experiment</button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className={`flex flex-col h-screen overflow-hidden relative transition-colors duration-500 text-theme bg-theme`}>
-      <header className="h-20 flex-shrink-0 flex items-center justify-between px-8 glass z-40 border-b border-theme shadow-sm">
+    <div className="flex flex-col h-full bg-theme text-theme">
+      {/* Header */}
+      <header className="flex items-center justify-between px-8 glass z-40" style={{ height: '70px', flexShrink: 0 }}>
         <div className="flex items-center gap-4">
-          <div className="w-10 h-10 rounded-2xl bg-indigo-600 flex items-center justify-center ring-4 ring-indigo-500/10 shadow-lg">
-            <span className="text-white text-[14px] font-black italic">AE</span>
-          </div>
-          <h1 className="serif text-2xl font-black tracking-tight hidden lg:block">Einstein's Universe</h1>
+          <div className="flex items-center justify-center" style={{ width: '36px', height: '36px', borderRadius: '10px', backgroundColor: 'var(--accent)', fontWeight: 900, fontStyle: 'italic', color: '#fff', fontSize: '13px' }}>AE</div>
+          <h1 className="serif lg-block hidden" style={{ fontSize: '1.25rem', fontWeight: 900 }}>Einstein's Universe</h1>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={playLatestSpeech} className={`px-5 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all border ${isAudioPlaying ? 'bg-red-500/10 text-red-500 border-red-500/30' : 'bg-indigo-600 text-white'}`}>
+          <button onClick={playLatestSpeech} style={{ padding: '0.6rem 1.25rem', borderRadius: '0.75rem', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.05em', backgroundColor: isAudioPlaying ? 'rgba(239, 68, 68, 0.15)' : 'var(--accent)', color: isAudioPlaying ? '#ef4444' : '#fff' }}>
             {isAudioPlaying ? 'Mute' : 'Listen'}
           </button>
           <div className="relative" ref={dropdownRef}>
-            <button onClick={() => setIsDropdownOpen(!isDropdownOpen)} className="px-4 py-3 rounded-2xl bg-input border border-theme text-xs font-black uppercase tracking-widest text-indigo-500">
+            <button onClick={() => setIsDropdownOpen(!isDropdownOpen)} className="bg-input" style={{ padding: '0.6rem 1rem', borderRadius: '0.75rem', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--accent)', border: '1px solid var(--border-color)' }}>
               {currentChapter?.id}
             </button>
             {isDropdownOpen && (
-              <div className="absolute top-full mt-3 right-0 w-80 glass rounded-3xl border border-theme shadow-2xl py-4 z-50 overflow-hidden">
+              <div className="absolute glass z-50" style={{ top: '100%', right: 0, marginTop: '0.5rem', width: '280px', borderRadius: '1.25rem', padding: '0.75rem 0', boxShadow: 'var(--card-shadow)' }}>
                 {CHAPTERS.map(ch => (
-                  <button key={ch.id} onClick={() => startEra(ch.id)} className={`w-full px-5 py-3 text-left text-[11px] font-black uppercase tracking-wider hover:bg-indigo-600/10 ${currentEra === ch.id ? 'text-indigo-500' : ''}`}>
+                  <button key={ch.id} onClick={() => startEra(ch.id)} style={{ width: '100%', textAlign: 'left', padding: '0.6rem 1.25rem', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', color: currentEra === ch.id ? 'var(--accent)' : 'inherit', backgroundColor: 'transparent' }}>
                     {ch.id}
                   </button>
                 ))}
               </div>
             )}
           </div>
-          <button onClick={() => setIsDarkMode(!isDarkMode)} className="w-12 h-12 flex items-center justify-center rounded-2xl bg-input border border-theme">
+          <button onClick={() => setIsDarkMode(!isDarkMode)} className="bg-input" style={{ width: '40px', height: '40px', borderRadius: '0.75rem', border: '1px solid var(--border-color)' }}>
             {isDarkMode ? '☀️' : '🌙'}
           </button>
         </div>
       </header>
 
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
-        <section className="lg:w-[500px] flex-shrink-0 flex flex-col border-r border-theme bg-aside">
-          <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-6 md:px-10 py-10 space-y-8 no-scrollbar scroll-smooth">
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col lg-flex-row overflow-hidden relative">
+        <section className="lg-w-500 flex flex-col bg-aside" style={{ borderRight: '1px solid var(--border-color)' }}>
+          <div ref={chatContainerRef} className="flex-1 overflow-y-auto no-scrollbar" style={{ padding: '2rem' }}>
             {messages.map((msg, idx) => (
-              <div key={idx} className={`flex ${msg.role === 'einstein' ? 'justify-start' : 'justify-end'}`}>
-                <div className={`rounded-3xl p-6 md:p-8 shadow-sm ${msg.role === 'einstein' ? 'bg-einstein border border-theme text-theme max-w-[95%]' : 'bg-indigo-600 text-white max-w-[85%] ml-10'}`}>
-                  <div className="leading-relaxed whitespace-pre-wrap serif text-lg md:text-xl">{msg.text}</div>
+              <div key={idx} className="flex" style={{ justifyContent: msg.role === 'einstein' ? 'flex-start' : 'flex-end' }}>
+                <div className={`msg-container ${msg.role === 'einstein' ? 'bg-einstein border-theme' : ''}`} style={{ 
+                  backgroundColor: msg.role === 'user' ? 'var(--accent)' : 'var(--chat-einstein-bg)', 
+                  color: msg.role === 'user' ? '#fff' : 'inherit',
+                  border: msg.role === 'einstein' ? '1px solid var(--border-color)' : 'none'
+                }}>
+                  <div className="serif" style={{ fontSize: '1.1rem', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{msg.text}</div>
                 </div>
               </div>
             ))}
-            {isLoading && <div className="text-center opacity-40 uppercase text-[9px] font-black tracking-widest">Calculations in progress...</div>}
+            {isLoading && <div style={{ textAlign: 'center', opacity: 0.4, fontSize: '9px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.2em' }}>Calculations in progress...</div>}
             <div ref={chatEndRef} />
           </div>
         </section>
 
-        <aside className="flex-1 flex flex-col bg-aside overflow-hidden">
-          <div className="p-4 md:p-12 h-full flex flex-col items-center justify-center">
-            <div className="w-full h-full glass rounded-[3rem] overflow-hidden flex items-center justify-center border border-theme shadow-inner">
-              {lastImage ? (
-                <img src={lastImage} className="max-w-full max-h-full w-auto h-auto object-contain chalkboard-filter" alt="Theory" />
-              ) : (
-                <div className="opacity-10 text-[10px] tracking-[0.5em] font-black uppercase">Awaiting Observation</div>
-              )}
-            </div>
+        <aside className="flex-1 flex flex-col bg-aside items-center justify-center" style={{ padding: '1.5rem' }}>
+          <div className="glass w-full h-full flex items-center justify-center" style={{ borderRadius: '2rem', overflow: 'hidden', padding: '1rem' }}>
+            {lastImage ? (
+              <img src={lastImage} className="chalkboard-filter" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} alt="Theory" />
+            ) : (
+              <div style={{ opacity: 0.1, fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.4em', textAlign: 'center' }}>
+                Waveform waiting to be observed
+              </div>
+            )}
           </div>
         </aside>
-      </div>
+      </main>
 
-      <div className="w-full p-6 border-t border-theme glass bg-inherit z-50">
-        <div className="max-w-6xl mx-auto w-full">
-          <div className="flex flex-wrap items-center gap-4 mb-4">
-             <button onClick={() => handleAction(`Please manifest a new detailed scientific chalkboard diagram for: ${currentEra}`)} className="px-6 py-3 rounded-2xl bg-input border border-theme text-[10px] font-black uppercase tracking-[0.2em]">Show Diagram</button>
+      {/* Footer / Control Bar */}
+      <footer className="glass z-40 bg-theme" style={{ minHeight: '140px', padding: '1.5rem', borderTop: '1px solid var(--border-color)', flexShrink: 0 }}>
+        <div style={{ maxWidth: '900px', margin: '0 auto', width: '100%' }}>
+          <div className="flex gap-3" style={{ flexWrap: 'wrap', marginBottom: '1rem' }}>
+             <button onClick={() => handleAction(`Please manifest a new detailed scientific chalkboard diagram for: ${currentEra}`)} className="bg-input border-theme" style={{ padding: '0.6rem 1.25rem', borderRadius: '0.75rem', fontSize: '9px', fontWeight: 900, textTransform: 'uppercase' }}>Show Diagram</button>
              
              <div className="relative" ref={faqDropdownRef}>
-                <button onClick={() => setIsFaqOpen(!isFaqOpen)} className="px-6 py-3 rounded-2xl bg-input border border-theme text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-2">
+                <button onClick={() => setIsFaqOpen(!isFaqOpen)} className="bg-input border-theme" style={{ padding: '0.6rem 1.25rem', borderRadius: '0.75rem', fontSize: '9px', fontWeight: 900, textTransform: 'uppercase' }}>
                   Scientific Archive {isFaqOpen ? '▴' : '▾'}
                 </button>
                 {isFaqOpen && (
-                  <div className="absolute bottom-full mb-3 left-0 w-64 glass rounded-3xl border border-theme shadow-2xl p-2 z-[60]">
+                  <div className="absolute glass z-50" style={{ bottom: '100%', left: 0, marginBottom: '0.5rem', width: '200px', borderRadius: '1rem', padding: '0.5rem', boxShadow: 'var(--card-shadow)' }}>
                     {['detail', 'applications', 'figures'].map(type => (
-                      <button key={type} onClick={() => handleFaqInquiry(type as any)} className="w-full px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider hover:bg-indigo-600/10 rounded-xl">
-                        {type.charAt(0).toUpperCase() + type.slice(1)}
+                      <button key={type} onClick={() => handleFaqInquiry(type as any)} style={{ width: '100%', textAlign: 'left', padding: '0.6rem 0.75rem', fontSize: '9px', fontWeight: 800, textTransform: 'uppercase', borderRadius: '0.5rem', backgroundColor: 'transparent' }}>
+                        {type}
                       </button>
                     ))}
                   </div>
                 )}
              </div>
 
-             <button onClick={handleNextChapter} disabled={currentEra === Era.Unified} className="px-6 py-3 rounded-2xl bg-input border border-theme text-[10px] font-black uppercase tracking-[0.2em] disabled:opacity-30">Next Era</button>
+             <button onClick={handleNextChapter} disabled={currentEra === Era.Unified} className="bg-input border-theme" style={{ padding: '0.6rem 1.25rem', borderRadius: '0.75rem', fontSize: '9px', fontWeight: 900, textTransform: 'uppercase' }}>Next Era</button>
           </div>
-          <form onSubmit={handleSendMessage} className="relative group">
-            <input type="text" value={userInput} onChange={(e) => setUserInput(e.target.value)} placeholder="Ask the Professor..." className="w-full bg-input border border-theme rounded-[2rem] pl-8 pr-32 py-5 text-base focus:outline-none focus:ring-2 focus:ring-indigo-500/20" />
-            <button type="submit" className="absolute right-4 top-1/2 -translate-y-1/2 bg-indigo-600 text-white px-6 py-2 rounded-xl font-black text-[10px] uppercase">Query</button>
+          
+          <form onSubmit={handleSendMessage} className="relative">
+            <input 
+              type="text" 
+              value={userInput} 
+              onChange={(e) => setUserInput(e.target.value)} 
+              placeholder="Address the Professor..." 
+              className="bg-input border-theme" 
+              style={{ 
+                borderRadius: '1.25rem', 
+                border: '1px solid var(--border-color)', 
+                padding: '1.1rem 1.5rem', 
+                paddingRight: '7rem', 
+                fontSize: '0.95rem' 
+              }} 
+            />
+            <button 
+              type="submit" 
+              style={{ 
+                position: 'absolute', 
+                right: '8px', 
+                top: '50%', 
+                transform: 'translateY(-50%)', 
+                backgroundColor: 'var(--accent)', 
+                color: '#fff', 
+                padding: '0.6rem 1.2rem', 
+                borderRadius: '0.75rem', 
+                fontWeight: 900, 
+                fontSize: '9px', 
+                textTransform: 'uppercase' 
+              }}
+            >
+              Query
+            </button>
           </form>
         </div>
-      </div>
+      </footer>
     </div>
   );
 };
