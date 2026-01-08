@@ -21,7 +21,7 @@ try {
     db = getDatabase(app, dbUrl);
   }
 } catch (e) {
-  console.debug("Firebase initialization deferred. Local cache only mode.");
+  console.debug("Firebase initialization deferred. Global cache may be unavailable.");
 }
 
 const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
@@ -35,22 +35,22 @@ async function generateCacheKey(input: string): Promise<string> {
 }
 
 async function getFromCache(category: string, key: string): Promise<any> {
-  // 1. Try Firebase (Global Cache)
+  // 1. Try Global Firebase Cache (Shared across all users)
   if (db) {
     try {
-      const snapshot = await get(ref(db, `einstein_global_cache/${category}/${key}`));
+      const snapshot = await get(ref(db, `einstein_global_v1/${category}/${key}`));
       if (snapshot.exists()) {
         const val = snapshot.val();
-        // Also populate local storage for offline speed
+        // Sync to local storage for offline support/speed
         try { localStorage.setItem(`einstein_local_${category}_${key}`, val); } catch(e){}
         return val;
       }
     } catch (e) {
-      console.warn("Global cache check failed", e);
+      console.warn("Global cache retrieval error", e);
     }
   }
 
-  // 2. Fallback to LocalStorage
+  // 2. Fallback to LocalStorage (User-specific fallback)
   try {
     return localStorage.getItem(`einstein_local_${category}_${key}`);
   } catch (e) {
@@ -59,16 +59,18 @@ async function getFromCache(category: string, key: string): Promise<any> {
 }
 
 async function saveToCache(category: string, key: string, data: string): Promise<void> {
-  // 1. Save Local
+  // 1. Save to Local Storage
   try {
     localStorage.setItem(`einstein_local_${category}_${key}`, data);
   } catch (e) {}
 
-  // 2. Save Global (Firebase)
+  // 2. Save to Global Firebase Cache (Make available to all users)
   if (db) {
     try {
-      await set(ref(db, `einstein_global_cache/${category}/${key}`), data);
-    } catch (e) {}
+      await set(ref(db, `einstein_global_v1/${category}/${key}`), data);
+    } catch (e) {
+      console.warn("Global cache save failed", e);
+    }
   }
 }
 
@@ -119,7 +121,6 @@ export async function generateChalkboardImage(prompt: string): Promise<string> {
 }
 
 export async function generateEinsteinSpeech(text: string): Promise<string> {
-  // Remove image tags for clean TTS
   const speechText = text.replace(/\[IMAGE:.*?\]/g, '').trim();
   const key = await generateCacheKey(speechText);
   const cached = await getFromCache('audio', key);
