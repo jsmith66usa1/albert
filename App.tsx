@@ -22,10 +22,16 @@ const App: React.FC = () => {
   const [hasStarted, setHasStarted] = useState(false);
   const [currentlySpeakingId, setCurrentlySpeakingId] = useState<number | null>(null);
   
+  // FAQ Dropdown state
+  const [isFaqOpen, setIsFaqOpen] = useState(false);
+  
   const chatEndRef = useRef<HTMLDivElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const faqDropdownRef = useRef<HTMLDivElement>(null);
+
+  const currentChapter = useMemo(() => CHAPTERS.find(c => c.id === currentEra), [currentEra]);
 
   // Sync theme with body class
   useEffect(() => {
@@ -36,11 +42,14 @@ const App: React.FC = () => {
     }
   }, [isDarkMode]);
 
-  // Handle outside click for dropdown
+  // Handle outside click for dropdowns
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsDropdownOpen(false);
+      }
+      if (faqDropdownRef.current && !faqDropdownRef.current.contains(event.target as Node)) {
+        setIsFaqOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -109,7 +118,6 @@ const App: React.FC = () => {
   };
 
   const playLatestSpeech = () => {
-    // Find the last einstein message index
     let lastIdx = -1;
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i].role === 'einstein') {
@@ -132,7 +140,6 @@ const App: React.FC = () => {
     try {
       const responseText = await generateEinsteinResponse(promptText, history);
       
-      // Extract image tag
       const imageMatch = responseText.match(/\[IMAGE: (.*?)\]/);
       let imageUrl = undefined;
       let cleanedText = responseText;
@@ -156,12 +163,39 @@ const App: React.FC = () => {
       };
 
       setMessages(prev => [...prev, newMessage]);
-      if (eraToSet) setCurrentEra(eraToSet);
+      if (eraToSet) {
+        setCurrentEra(eraToSet);
+      }
     } catch (err) {
       console.error("Einstein failed us", err);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleFaqInquiry = (type: 'detail' | 'applications' | 'figures') => {
+    setIsFaqOpen(false);
+    let inquiry = "";
+    switch(type) {
+      case 'detail':
+        inquiry = `My dear friend, please explain the mathematical and theoretical details of ${currentEra} in more depth.`;
+        break;
+      case 'applications':
+        inquiry = `Professor, what are the modern scientific applications of the concepts from the ${currentEra}?`;
+        break;
+      case 'figures':
+        inquiry = `Who were the most pivotal historical figures that shaped the ${currentEra}?`;
+        break;
+    }
+    
+    // Add user message to chat for context
+    const userMsg: Message = {
+      role: 'user',
+      text: inquiry,
+      timestamp: Date.now()
+    };
+    setMessages(prev => [...prev, userMsg]);
+    handleAction(inquiry);
   };
 
   const startEra = (era: Era) => {
@@ -203,12 +237,9 @@ const App: React.FC = () => {
     }));
   }, []);
 
-  const currentChapter = CHAPTERS.find(c => c.id === currentEra);
-
   if (!hasStarted) {
     return (
       <div className="h-screen w-screen bg-[#09090b] flex flex-col items-center justify-center p-6 relative overflow-hidden">
-        {/* Deep Space Background for Splash */}
         <div className="absolute inset-0 pointer-events-none">
           {stars.map((star, i) => (
             <div key={i} className="star bg-indigo-300" style={{ top: star.top, left: star.left, width: star.size, height: star.size, '--duration': star.duration, animationDelay: star.delay } as any} />
@@ -255,7 +286,6 @@ const App: React.FC = () => {
 
   return (
     <div className={`flex flex-col h-screen overflow-hidden relative transition-colors duration-500`}>
-      {/* Starfield Background */}
       <div className="absolute inset-0 pointer-events-none opacity-20 z-0">
         {stars.map((star, i) => (
           <div 
@@ -273,8 +303,7 @@ const App: React.FC = () => {
         ))}
       </div>
 
-      {/* Header */}
-      <header className="h-20 flex items-center justify-between px-8 glass z-40 shadow-xl border-b border-theme">
+      <header className="h-20 flex-shrink-0 flex items-center justify-between px-8 glass z-40 shadow-xl border-b border-theme">
         <div className="flex items-center gap-4">
           <div className="w-10 h-10 rounded-2xl bg-indigo-600 flex items-center justify-center ring-4 ring-indigo-500/10 rotate-3 transition-transform hover:rotate-0 shadow-lg">
             <span className="text-white text-[14px] font-black italic">AE</span>
@@ -285,7 +314,6 @@ const App: React.FC = () => {
         </div>
         
         <div className="flex items-center gap-3">
-          {/* Global Speak Button at top of the page */}
           <button 
             onClick={playLatestSpeech}
             className={`flex items-center gap-3 px-5 py-3 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] transition-all border shadow-sm ${
@@ -304,7 +332,6 @@ const App: React.FC = () => {
 
           <div className="h-8 w-px bg-theme mx-2" />
 
-          {/* Era Dropdown */}
           <div className="relative" ref={dropdownRef}>
             <button
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}
@@ -352,10 +379,7 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden z-10">
-        
-        {/* Dialogue Pane (Text Area) */}
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden z-10 relative">
         <section className="lg:w-[450px] xl:w-[550px] flex-shrink-0 flex flex-col border-r border-theme bg-zinc-950/20 relative shadow-2xl">
           <div className="flex-1 overflow-y-auto px-6 md:px-10 py-10 space-y-12 no-scrollbar">
             <div className="text-center pb-6">
@@ -366,7 +390,6 @@ const App: React.FC = () => {
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.role === 'einstein' ? 'justify-start' : 'justify-end animate-in fade-in slide-in-from-right-4 duration-300'}`}>
                 <div className={`max-w-[100%] ${msg.role === 'einstein' ? '' : 'flex flex-col items-end w-full'}`}>
-                  
                   {msg.role === 'einstein' && (
                     <div className="flex items-center justify-between mb-4 px-2">
                       <div className="flex items-center gap-3">
@@ -424,29 +447,8 @@ const App: React.FC = () => {
             )}
             <div ref={chatEndRef} />
           </div>
-
-          {/* Input Box */}
-          <div className="p-6 md:p-8 border-t border-theme glass">
-            <form onSubmit={handleSendMessage} className="relative group">
-              <input
-                type="text"
-                value={userInput}
-                onChange={(e) => setUserInput(e.target.value)}
-                placeholder="Pose a question to the Professor..."
-                className="w-full bg-input border border-theme rounded-[2rem] pl-8 pr-28 py-5 text-sm focus:outline-none focus:ring-4 focus:ring-indigo-600/10 transition-all shadow-xl backdrop-blur-3xl"
-              />
-              <button
-                type="submit"
-                disabled={isLoading || !userInput.trim()}
-                className="absolute right-4 top-1/2 -translate-y-1/2 bg-indigo-600 hover:bg-indigo-500 text-white disabled:bg-zinc-800 disabled:text-zinc-600 px-6 py-2.5 rounded-2xl font-black text-[9px] uppercase tracking-widest transition-all active:scale-95 shadow-xl shadow-indigo-600/20"
-              >
-                Query
-              </button>
-            </form>
-          </div>
         </section>
 
-        {/* Laboratory Visualization (Large Image Area) */}
         <aside className="flex-1 flex flex-col bg-aside overflow-hidden relative shadow-[inset_20px_0_40px_rgba(0,0,0,0.3)]">
           <div className="p-8 md:p-12 h-full flex flex-col">
             <div className="flex items-center justify-between mb-8">
@@ -460,7 +462,6 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            {/* Main Chalkboard Illustration - Expanded */}
             <div className="flex-1 flex items-center justify-center relative group min-h-0">
               <div className="w-full h-full max-w-[900px] max-h-[900px] aspect-square rounded-[3rem] overflow-hidden border border-theme bg-zinc-950 flex items-center justify-center shadow-[0_50px_100px_rgba(0,0,0,0.8)] relative z-10 transition-all duration-1000 group-hover:shadow-[0_60px_120px_rgba(79,70,229,0.2)]">
                 {lastImage ? (
@@ -483,43 +484,88 @@ const App: React.FC = () => {
               
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[120%] bg-indigo-600/5 blur-[120px] rounded-full pointer-events-none transition-opacity duration-1000 opacity-0 group-hover:opacity-100" />
             </div>
-            
-            {/* Metadata Footer for Visualization */}
-            <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="p-8 rounded-[2rem] glass border-theme bg-white/[0.01] shadow-xl md:col-span-2">
-                <div className="flex items-center gap-3 mb-4">
-                  <span className="w-2 h-2 rounded-full bg-indigo-500" />
-                  <h3 className="mono text-[10px] text-zinc-500 uppercase tracking-[0.3em] font-black">Theoretical Context</h3>
-                </div>
-                <div className="flex flex-col gap-2">
-                   <p className="serif text-3xl font-black leading-tight bg-clip-text text-transparent bg-gradient-to-r from-theme to-indigo-500/50">{currentChapter?.title}</p>
-                   <p className="text-[15px] text-zinc-400 leading-relaxed italic opacity-80 serif">
-                    "{currentChapter?.description}"
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-4">
-                <div className="p-6 rounded-3xl border border-theme bg-zinc-900/10 backdrop-blur-sm group hover:border-indigo-500/30 transition-all shadow-md">
-                  <span className="block text-[9px] text-zinc-500 uppercase mono mb-2 font-black tracking-widest">Observer Status</span>
-                  <span className="serif text-[13px] text-indigo-300 group-hover:text-indigo-200 transition-colors">Quantum Superposition</span>
-                </div>
-                <div className="p-6 rounded-3xl border border-theme bg-zinc-900/10 backdrop-blur-sm group hover:border-indigo-500/30 transition-all shadow-md">
-                  <span className="block text-[9px] text-zinc-500 uppercase mono mb-2 font-black tracking-widest">Physical Constant</span>
-                  <span className="mono text-[11px] text-indigo-300 group-hover:text-indigo-200 transition-colors">$G = 6.674 \times 10^{-11}$</span>
-                </div>
-              </div>
-            </div>
-
-            <footer className="mt-10 pt-6 border-t border-theme opacity-30 flex justify-between items-center text-[10px] mono uppercase tracking-[0.4em] font-black group hover:opacity-100 transition-opacity">
-               <div className="flex gap-8">
-                 <span className="hover:text-indigo-500 cursor-help">Relativity Engine v4.0</span>
-                 <span className="hidden md:inline hover:text-indigo-500 cursor-help">Cosmological Constant: $\Lambda$</span>
-               </div>
-               <span className="text-indigo-500">Curvature: Non-Euclidean</span>
-            </footer>
           </div>
         </aside>
+      </div>
+
+      <div className="w-full p-6 md:p-8 border-t border-theme glass flex-shrink-0 z-50 bg-inherit relative">
+        <div className="max-w-7xl mx-auto w-full">
+          {/* Action Row Buttons */}
+          <div className="flex items-center gap-4 mb-6 px-4">
+             <button 
+              onClick={() => handleAction(`Please manifest a new detailed scientific chalkboard diagram for the current topic: ${currentEra}`)}
+              disabled={isLoading}
+              className="flex items-center gap-3 px-6 py-3 rounded-2xl bg-zinc-100 dark:bg-zinc-800/80 border border-theme text-zinc-800 dark:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all text-[10px] font-black uppercase tracking-[0.2em] shadow-lg active:scale-95 disabled:opacity-50"
+             >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-500"><path d="M12 2v8"/><path d="m16 6-4 4-4-4"/><rect width="20" height="14" x="2" y="8" rx="2"/><path d="M6 14h.01"/><path d="M10 14h.01"/></svg>
+                Show Diagram
+             </button>
+             
+             {/* FAQ Dropdown Wrapper */}
+             <div className="relative" ref={faqDropdownRef}>
+                <button 
+                  onClick={() => setIsFaqOpen(!isFaqOpen)}
+                  disabled={isLoading}
+                  className={`flex items-center gap-3 px-6 py-3 rounded-2xl border transition-all text-[10px] font-black uppercase tracking-[0.2em] shadow-lg active:scale-95 disabled:opacity-50 ${isFaqOpen ? 'bg-indigo-600 text-white border-indigo-400' : 'bg-zinc-100 dark:bg-zinc-800/80 border-theme text-zinc-800 dark:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700'}`}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={isFaqOpen ? 'text-white' : 'text-indigo-500'}><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M8 7h6"/><path d="M8 11h8"/><path d="M8 15h5"/></svg>
+                  Scientific Archive (FAQ)
+                </button>
+
+                {/* FAQ Dropdown Menu */}
+                {isFaqOpen && (
+                  <div className="absolute bottom-full mb-4 left-0 w-64 glass rounded-3xl border border-theme shadow-[0_20px_40px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col p-2 animate-in slide-in-from-bottom-2 duration-200 z-[100]">
+                    <div className="px-4 py-3 mb-2 border-b border-theme/50">
+                       <span className="text-[9px] font-black text-indigo-500 uppercase tracking-widest">Select Inquiry Path</span>
+                    </div>
+                    <button 
+                      onClick={() => handleFaqInquiry('detail')}
+                      className="w-full px-4 py-3.5 text-left flex items-center gap-3 hover:bg-indigo-600/10 rounded-xl transition-colors text-[10px] font-bold uppercase tracking-wider text-theme"
+                    >
+                      <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                      More Detail
+                    </button>
+                    <button 
+                      onClick={() => handleFaqInquiry('applications')}
+                      className="w-full px-4 py-3.5 text-left flex items-center gap-3 hover:bg-indigo-600/10 rounded-xl transition-colors text-[10px] font-bold uppercase tracking-wider text-theme"
+                    >
+                      <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                      Applications
+                    </button>
+                    <button 
+                      onClick={() => handleFaqInquiry('figures')}
+                      className="w-full px-4 py-3.5 text-left flex items-center gap-3 hover:bg-indigo-600/10 rounded-xl transition-colors text-[10px] font-bold uppercase tracking-wider text-theme"
+                    >
+                      <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                      Historical Figures
+                    </button>
+                  </div>
+                )}
+             </div>
+          </div>
+
+          <form onSubmit={handleSendMessage} className="relative group">
+            <input
+              type="text"
+              value={userInput}
+              onChange={(e) => setUserInput(e.target.value)}
+              placeholder="Pose a question to the Professor..."
+              className="w-full bg-input border border-theme rounded-[2.5rem] pl-10 pr-36 py-6 text-base focus:outline-none focus:ring-4 focus:ring-indigo-600/10 transition-all shadow-2xl backdrop-blur-3xl"
+            />
+            <div className="absolute right-6 top-1/2 -translate-y-1/2 flex items-center gap-4">
+               {isLoading && (
+                 <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+               )}
+               <button
+                type="submit"
+                disabled={isLoading || !userInput.trim()}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white disabled:bg-zinc-800 disabled:text-zinc-600 px-8 py-3 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] transition-all active:scale-95 shadow-xl shadow-indigo-600/30"
+              >
+                Query
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   );
