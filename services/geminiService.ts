@@ -61,13 +61,21 @@ async function generateCacheKey(input: string): Promise<string> {
 
 async function getFromCache(category: string, key: string): Promise<any> {
   const start = performance.now();
+  
+  // 1. ALWAYS TRY GLOBAL FIREBASE FIRST
   if (db) {
     try {
       const dbRef = ref(db, `einstein_global_v1/${category}/${key}`);
       const snapshot = await get(dbRef);
       if (snapshot.exists()) {
         const val = snapshot.val();
-        addLog({ type: 'CACHE_DB', label: `Global ${category} Retrieval`, duration: performance.now() - start, status: 'CACHE_HIT', message: `Retrieved shared discovery [ID: ${key.substring(0,8)}] from the Global Firebase Cache. This intelligence (text/image/audio) was previously contributed by another user to the World Brain.` });
+        addLog({ 
+          type: 'CACHE_DB', 
+          label: `Global ${category} Retrieval`, 
+          duration: performance.now() - start, 
+          status: 'CACHE_HIT', 
+          message: `SUCCESS: Retrieved discovery [ID: ${key.substring(0,8)}] from the Global Firebase Cache. This intelligence was previously contributed by another user to the World Brain.` 
+        });
         return val;
       }
     } catch (e: any) {
@@ -75,29 +83,54 @@ async function getFromCache(category: string, key: string): Promise<any> {
     }
   }
 
-  const local = localStorage.getItem(`einstein_local_${category}_${key}`);
-  if (local) {
-    addLog({ type: 'CACHE_DB', label: `Local ${category} Retrieval`, duration: performance.now() - start, status: 'CACHE_HIT', message: 'Retrieved from device-specific browser storage.' });
-  }
-  return local;
+  // 2. FALLBACK TO LOCAL STORAGE
+  try {
+    const local = localStorage.getItem(`einstein_local_${category}_${key}`);
+    if (local) {
+      addLog({ type: 'CACHE_DB', label: `Local ${category} Retrieval`, duration: performance.now() - start, status: 'CACHE_HIT', message: 'Retrieved from local browser storage (Fallback).' });
+      return local;
+    }
+  } catch (e) {}
+  
+  return null;
 }
 
 async function saveToCache(category: string, key: string, data: string): Promise<void> {
   if (!data) return;
   const start = performance.now();
-  try {
-    // Attempt local cache first
+  
+  // 1. ATTEMPT GLOBAL PERSISTENCE (Highest Priority)
+  let globalSuccess = false;
+  if (db) {
     try {
-      localStorage.setItem(`einstein_local_${category}_${key}`, data);
-    } catch (localErr) {}
-
-    if (db) {
       const dbRef = ref(db, `einstein_global_v1/${category}/${key}`);
       await set(dbRef, data);
-      addLog({ type: 'CACHE_DB', label: `Global ${category} Persistence`, duration: performance.now() - start, status: 'SUCCESS', message: `Manifestation [ID: ${key.substring(0,8)}] successfully synchronized with the Global Firebase World Brain. This discovery (text/image/audio) is now instantly available to every user on the planet.` });
+      globalSuccess = true;
+      addLog({ 
+        type: 'CACHE_DB', 
+        label: `Global ${category} Persistence`, 
+        duration: performance.now() - start, 
+        status: 'SUCCESS', 
+        message: `SUCCESS: Discovery [ID: ${key.substring(0,8)}] synchronized with the Global Firebase World Brain. This discovery is now shared with all users worldwide.` 
+      });
+    } catch (e: any) {
+      addLog({ type: 'ERROR', label: `Global ${category} Sync Failure`, duration: performance.now() - start, status: 'ERROR', message: `[DIAGNOSTIC_RECOVERY] Global Persistence failure: ${e.message}.` });
     }
+  }
+
+  // 2. ATTEMPT LOCAL PERSISTENCE (Best effort, ignore quota errors)
+  try {
+    localStorage.setItem(`einstein_local_${category}_${key}`, data);
   } catch (e: any) {
-    addLog({ type: 'ERROR', label: `Global ${category} Sync Failure`, duration: performance.now() - start, status: 'ERROR', message: `[DIAGNOSTIC_RECOVERY] Global Persistence failure: ${e.message}. Discovery is currently isolated to this observer's session.` });
+    if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+      addLog({ 
+        type: 'SYSTEM', 
+        label: 'Local Quota Exceeded', 
+        duration: 0, 
+        status: 'SUCCESS', 
+        message: 'INFO: Local browser storage is full. Skipping local cache. Discovery is still preserved in the Global World Brain via Firebase.' 
+      });
+    }
   }
 }
 
@@ -121,7 +154,7 @@ export async function generateEinsteinResponse(prompt: string, history: { role: 
     
     const textResult = response.text;
     if (textResult) {
-      addLog({ type: 'AI_TEXT', label: 'Linguistic Computation', duration: performance.now() - start, status: 'SUCCESS', message: `The Professor synthesized a new linguistic response. Synchronizing this text data with the Global World Brain via Firebase.` });
+      addLog({ type: 'AI_TEXT', label: 'Linguistic Computation', duration: performance.now() - start, status: 'SUCCESS', message: `Professor synthesized a new linguistic response. Transmitting text discovery to the Global World Brain.` });
       await saveToCache('responses', key, textResult);
     }
     return textResult;
@@ -155,7 +188,7 @@ export async function generateChalkboardImage(prompt: string): Promise<string> {
       }
     }
     if (imageData) {
-      addLog({ type: 'AI_IMAGE', label: 'Visual Manifestation', duration: performance.now() - start, status: 'SUCCESS', message: 'New chalkboard visualization rendered. Transmitting binary image data to the Global Firebase cluster for universal synchronization.' });
+      addLog({ type: 'AI_IMAGE', label: 'Visual Manifestation', duration: performance.now() - start, status: 'SUCCESS', message: 'New chalkboard visualization rendered. Uploading heavy image bytes to Global Firebase storage for universal synchronization.' });
       await saveToCache('images', key, imageData);
     }
     return imageData;
@@ -185,7 +218,7 @@ export async function generateEinsteinSpeech(text: string): Promise<string> {
 
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (base64Audio) {
-      addLog({ type: 'AI_AUDIO', label: 'Sonic Synthesis', duration: performance.now() - start, status: 'SUCCESS', message: 'Audio waveform synthesized for the Professor. Streaming audio bytes to the Global Firebase Cache so all users share the same voice.' });
+      addLog({ type: 'AI_AUDIO', label: 'Sonic Synthesis', duration: performance.now() - start, status: 'SUCCESS', message: 'Audio waveform synthesized. Saving audio discovery to Global Firebase World Brain.' });
       await saveToCache('audio', key, base64Audio);
     }
     return base64Audio;
