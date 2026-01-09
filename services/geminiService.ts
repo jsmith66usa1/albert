@@ -13,27 +13,23 @@ const firebaseConfig = {
   appId: process.env.FIREBASE_APP_ID
 };
 
-// Internal Log Store
 let performanceLogs: LogEntry[] = [];
 export const getPerformanceLogs = () => performanceLogs;
 export const clearPerformanceLogs = () => { performanceLogs = []; };
 
+/**
+ * TELEMETRY STREAM
+ * Strictly isolated from the text stream. 
+ * Dispatches events to the Log Modal listener only.
+ */
 const addLog = (entry: Omit<LogEntry, 'id' | 'timestamp'>) => {
-  const logTask = () => {
-    const newLog: LogEntry = {
-      ...entry,
-      id: Math.random().toString(36).substr(2, 9),
-      timestamp: Date.now()
-    };
-    performanceLogs = [newLog, ...performanceLogs].slice(0, 100);
-    window.dispatchEvent(new CustomEvent('performance_log_updated'));
+  const newLog: LogEntry = {
+    ...entry,
+    id: Math.random().toString(36).substr(2, 9),
+    timestamp: Date.now()
   };
-
-  if (window.requestIdleCallback) {
-    window.requestIdleCallback(logTask);
-  } else {
-    setTimeout(logTask, 0);
-  }
+  performanceLogs = [newLog, ...performanceLogs].slice(0, 100);
+  window.dispatchEvent(new CustomEvent('performance_log_updated'));
 };
 
 let db: any = null;
@@ -43,10 +39,16 @@ try {
   const dbUrl = firebaseConfig.databaseURL || (firebaseConfig.projectId ? `https://${firebaseConfig.projectId}-default-rtdb.firebaseio.com/` : undefined);
   if (dbUrl) {
     db = getDatabase(app, dbUrl);
-    addLog({ type: 'CACHE_DB', label: 'Firebase Sync', duration: performance.now() - startDb, status: 'SUCCESS', message: 'Successfully connected to the World Brain. Your discoveries are now shared globally with all users in real-time via Firebase.' });
+    addLog({ 
+      type: 'CACHE_DB', 
+      label: 'World Brain Online', 
+      duration: performance.now() - startDb, 
+      status: 'SUCCESS', 
+      message: 'Telemetry system initialized. All technical data routed to LOG modal.' 
+    });
   }
 } catch (e: any) {
-  addLog({ type: 'ERROR', label: 'Firebase Offline', duration: 0, status: 'ERROR', message: `[DIAGNOSTIC_RECOVERY] Global sync unavailable. Discoveries will remain local to this device. Error: ${e.message}` });
+  addLog({ type: 'ERROR', label: 'Registry Offline', duration: 0, status: 'ERROR', message: `Global sync unavailable: ${e.message}` });
 }
 
 const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
@@ -61,106 +63,92 @@ async function generateCacheKey(input: string): Promise<string> {
 
 async function getFromCache(category: string, key: string): Promise<any> {
   const start = performance.now();
-  
-  // 1. ALWAYS TRY GLOBAL FIREBASE FIRST
   if (db) {
     try {
-      const dbRef = ref(db, `einstein_global_v1/${category}/${key}`);
+      const dbRef = ref(db, `world_brain_v8/${category}/${key}`);
       const snapshot = await get(dbRef);
       if (snapshot.exists()) {
         const val = snapshot.val();
         addLog({ 
           type: 'CACHE_DB', 
-          label: `Global ${category} Retrieval`, 
+          label: `Cache Hit: ${category}`, 
           duration: performance.now() - start, 
           status: 'CACHE_HIT', 
-          message: `SUCCESS: Retrieved discovery [ID: ${key.substring(0,8)}] from the Global Firebase Cache. This intelligence was previously contributed by another user to the World Brain.` 
+          message: `Technical data recovered for ${key.substring(0,8)}.` 
         });
         return val;
       }
-    } catch (e: any) {
-      addLog({ type: 'ERROR', label: `Global ${category} Fetch Error`, duration: performance.now() - start, status: 'ERROR', message: `[DIAGNOSTIC_RECOVERY] RTDB Read failure: ${e.message}. Falling back to local device memory.` });
-    }
+    } catch (e) {}
   }
-
-  // 2. FALLBACK TO LOCAL STORAGE
   try {
-    const local = localStorage.getItem(`einstein_local_${category}_${key}`);
-    if (local) {
-      addLog({ type: 'CACHE_DB', label: `Local ${category} Retrieval`, duration: performance.now() - start, status: 'CACHE_HIT', message: 'Retrieved from local browser storage (Fallback).' });
-      return local;
-    }
+    const local = localStorage.getItem(`discovery_v8_${category}_${key}`);
+    if (local) return local;
   } catch (e) {}
-  
   return null;
 }
 
 async function saveToCache(category: string, key: string, data: string): Promise<void> {
   if (!data) return;
   const start = performance.now();
-  
-  // 1. ATTEMPT GLOBAL PERSISTENCE (Highest Priority)
-  let globalSuccess = false;
   if (db) {
     try {
-      const dbRef = ref(db, `einstein_global_v1/${category}/${key}`);
-      await set(dbRef, data);
-      globalSuccess = true;
+      const dbRef = ref(db, `world_brain_v8/${category}/${key}`);
+      set(dbRef, data).catch(() => {});
       addLog({ 
         type: 'CACHE_DB', 
-        label: `Global ${category} Persistence`, 
+        label: `Sync: ${category}`, 
         duration: performance.now() - start, 
         status: 'SUCCESS', 
-        message: `SUCCESS: Discovery [ID: ${key.substring(0,8)}] synchronized with the Global Firebase World Brain. This discovery is now shared with all users worldwide.` 
+        message: `Knowledge propagated to Global Brain.` 
       });
-    } catch (e: any) {
-      addLog({ type: 'ERROR', label: `Global ${category} Sync Failure`, duration: performance.now() - start, status: 'ERROR', message: `[DIAGNOSTIC_RECOVERY] Global Persistence failure: ${e.message}.` });
-    }
+    } catch (e) {}
   }
-
-  // 2. ATTEMPT LOCAL PERSISTENCE (Best effort, ignore quota errors)
   try {
-    localStorage.setItem(`einstein_local_${category}_${key}`, data);
-  } catch (e: any) {
-    if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
-      addLog({ 
-        type: 'SYSTEM', 
-        label: 'Local Quota Exceeded', 
-        duration: 0, 
-        status: 'SUCCESS', 
-        message: 'INFO: Local browser storage is full. Skipping local cache. Discovery is still preserved in the Global World Brain via Firebase.' 
-      });
-    }
-  }
+    localStorage.setItem(`discovery_v8_${category}_${key}`, data);
+  } catch (e) {}
 }
 
+/**
+ * PRIMARY TEXT STREAM
+ * Strictly contains Professor Einstein's dialogue.
+ * No log information is ever appended to the return value.
+ */
 export async function generateEinsteinResponse(prompt: string, history: { role: string, parts: { text: string }[] }[]) {
   const cacheInput = JSON.stringify({ history, prompt });
   const key = await generateCacheKey(cacheInput);
+  
   const cached = await getFromCache('responses', key);
   if (cached) return cached;
 
   const start = performance.now();
   try {
     const ai = getAI();
-    const response = await ai.models.generateContent({
+    const result = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
       contents: history.concat([{ role: 'user', parts: [{ text: prompt }] }]),
       config: {
-        systemInstruction: "You are Professor Albert Einstein. Speak with whimsical German-accented warmth. Be concise and elegant. Address user as 'My dear friend'. Use LaTeX for equations. If a new concept is introduced, add [IMAGE: description] for a chalkboard diagram. Use simple, beautiful analogies. You are part of a 'World Brain' - your answers are shared globally with all users.",
+        systemInstruction: "You are Professor Albert Einstein. Use whimsical warmth. Use LaTeX for math. Use [IMAGE: description] for visuals. NEVER output technical log data or internal reasoning in your response.",
         temperature: 0.7,
       },
     });
     
-    const textResult = response.text;
+    const textResult = result.text;
     if (textResult) {
-      addLog({ type: 'AI_TEXT', label: 'Linguistic Computation', duration: performance.now() - start, status: 'SUCCESS', message: `Professor synthesized a new linguistic response. Transmitting text discovery to the Global World Brain.` });
       await saveToCache('responses', key, textResult);
+      addLog({ 
+        type: 'AI_TEXT', 
+        label: 'Linguistic Synthesis', 
+        duration: performance.now() - start, 
+        status: 'SUCCESS', 
+        message: 'Dialogue committed to registry.' 
+      });
     }
     return textResult;
   } catch (e: any) {
-    addLog({ type: 'ERROR', label: 'AI Synthesis Error', duration: performance.now() - start, status: 'ERROR', message: `[DIAGNOSTIC_RECOVERY] Logic Engine failure: ${e.message}.` });
-    throw e;
+    if (e.name === 'Canceled') return "";
+    addLog({ type: 'ERROR', label: 'Synthesis Error', duration: performance.now() - start, status: 'ERROR', message: e.message });
+    // Return a graceful Einsteinian error instead of technical jargon
+    return "Ach, my dear friend. It seems the universe is temporarily folding in on itself. Let us try that thought again.";
   }
 }
 
@@ -172,15 +160,15 @@ export async function generateChalkboardImage(prompt: string): Promise<string> {
   const start = performance.now();
   try {
     const ai = getAI();
-    const response = await ai.models.generateContent({
+    const result = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
-      contents: [{ text: `A clean, minimalist chalkboard scientific diagram: ${prompt}. White chalk lines on dark dusty black background. Elegant handwriting. High contrast.` }],
+      contents: [{ text: `Minimalist scientific chalkboard diagram: ${prompt}. White chalk on black background.` }],
       config: { imageConfig: { aspectRatio: "1:1" } }
     });
 
     let imageData = "";
-    if (response.candidates?.[0]?.content?.parts) {
-      for (const part of response.candidates[0].content.parts) {
+    if (result.candidates?.[0]?.content?.parts) {
+      for (const part of result.candidates[0].content.parts) {
         if (part.inlineData) {
           imageData = `data:image/png;base64,${part.inlineData.data}`;
           break;
@@ -188,12 +176,19 @@ export async function generateChalkboardImage(prompt: string): Promise<string> {
       }
     }
     if (imageData) {
-      addLog({ type: 'AI_IMAGE', label: 'Visual Manifestation', duration: performance.now() - start, status: 'SUCCESS', message: 'New chalkboard visualization rendered. Uploading heavy image bytes to Global Firebase storage for universal synchronization.' });
       await saveToCache('images', key, imageData);
+      addLog({ 
+        type: 'AI_IMAGE', 
+        label: 'Visual Manifestation', 
+        duration: performance.now() - start, 
+        status: 'SUCCESS', 
+        message: 'Image synced to registry.' 
+      });
     }
     return imageData;
   } catch (e: any) {
-    addLog({ type: 'ERROR', label: 'Visual Synthesis Error', duration: performance.now() - start, status: 'ERROR', message: `[DIAGNOSTIC_RECOVERY] Image manifestation failed: ${e.message}.` });
+    if (e.name === 'Canceled') return "";
+    addLog({ type: 'ERROR', label: 'Image Error', duration: performance.now() - start, status: 'ERROR', message: e.message });
     throw e;
   }
 }
@@ -207,46 +202,47 @@ export async function generateEinsteinSpeech(text: string): Promise<string> {
   const start = performance.now();
   try {
     const ai = getAI();
-    const response = await ai.models.generateContent({
+    const result = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text: `Say this with a gentle, wise, elderly German intellectual tone: ${speechText}` }] }],
+      contents: [{ parts: [{ text: `Einstein: ${speechText}` }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Charon' } } },
       },
     });
-
-    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (base64Audio) {
-      addLog({ type: 'AI_AUDIO', label: 'Sonic Synthesis', duration: performance.now() - start, status: 'SUCCESS', message: 'Audio waveform synthesized. Saving audio discovery to Global Firebase World Brain.' });
-      await saveToCache('audio', key, base64Audio);
+    const base64 = result.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (base64) {
+      await saveToCache('audio', key, base64);
+      addLog({ 
+        type: 'AI_AUDIO', 
+        label: 'Sonic Synthesis', 
+        duration: performance.now() - start, 
+        status: 'SUCCESS', 
+        message: 'Audio synthesized and cached.' 
+      });
     }
-    return base64Audio;
+    return base64 || "";
   } catch (e: any) {
-    addLog({ type: 'ERROR', label: 'Audio Synthesis Error', duration: performance.now() - start, status: 'ERROR', message: `[DIAGNOSTIC_RECOVERY] TTS Sonic failure: ${e.message}.` });
+    if (e.name === 'Canceled') return "";
+    addLog({ type: 'ERROR', label: 'Audio Error', duration: 0, status: 'ERROR', message: e.message });
     throw e;
   }
 }
 
-export function decode(base64: string) {
+export const decode = (base64: string) => {
   const binaryString = atob(base64);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
   return bytes;
-}
+};
 
-export async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampleRate: number, numChannels: number): Promise<AudioBuffer> {
+export const decodeAudioData = async (data: Uint8Array, ctx: AudioContext, sampleRate: number, numChannels: number) => {
   const dataInt16 = new Int16Array(data.buffer);
   const frameCount = dataInt16.length / numChannels;
   const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
   for (let channel = 0; channel < numChannels; channel++) {
     const channelData = buffer.getChannelData(channel);
-    for (let i = 0; i < frameCount; i++) {
-      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
-    }
+    for (let i = 0; i < frameCount; i++) channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
   }
   return buffer;
-}
+};
