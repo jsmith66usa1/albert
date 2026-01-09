@@ -1,7 +1,7 @@
-
 import { GoogleGenAI, Modality } from "@google/genai";
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getDatabase, ref, get, set } from "firebase/database";
+import { LogEntry } from "../types";
 
 const firebaseConfig = {
   apiKey: process.env.API_KEY,
@@ -13,17 +13,40 @@ const firebaseConfig = {
   appId: process.env.FIREBASE_APP_ID
 };
 
+// Internal Log Store
+let performanceLogs: LogEntry[] = [];
+export const getPerformanceLogs = () => performanceLogs;
+export const clearPerformanceLogs = () => { performanceLogs = []; };
+
+const addLog = (entry: Omit<LogEntry, 'id' | 'timestamp'>) => {
+  const logTask = () => {
+    const newLog: LogEntry = {
+      ...entry,
+      id: Math.random().toString(36).substr(2, 9),
+      timestamp: Date.now()
+    };
+    performanceLogs = [newLog, ...performanceLogs].slice(0, 100);
+    window.dispatchEvent(new CustomEvent('performance_log_updated'));
+  };
+
+  if (window.requestIdleCallback) {
+    window.requestIdleCallback(logTask);
+  } else {
+    setTimeout(logTask, 0);
+  }
+};
+
 let db: any = null;
 try {
-  // Robust initialization: only init if no app exists
+  const startDb = performance.now();
   const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-  // Ensure we have a database URL. If missing, construct the standard one from projectId
   const dbUrl = firebaseConfig.databaseURL || (firebaseConfig.projectId ? `https://${firebaseConfig.projectId}-default-rtdb.firebaseio.com/` : undefined);
   if (dbUrl) {
     db = getDatabase(app, dbUrl);
+    addLog({ type: 'CACHE_DB', label: 'Firebase Sync', duration: performance.now() - startDb, status: 'SUCCESS', message: 'Successfully connected to the World Brain. Your discoveries are now shared globally with all users.' });
   }
-} catch (e) {
-  console.error("Firebase initialization failed:", e);
+} catch (e: any) {
+  addLog({ type: 'ERROR', label: 'Firebase Offline', duration: 0, status: 'ERROR', message: `[DIAGNOSTIC_RECOVERY] Global sync unavailable. Discoveries will remain local to this device. Error: ${e.message}` });
 }
 
 const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
@@ -37,46 +60,40 @@ async function generateCacheKey(input: string): Promise<string> {
 }
 
 async function getFromCache(category: string, key: string): Promise<any> {
-  // 1. Try Global Firebase Cache (Shared across all users permanently)
+  const start = performance.now();
   if (db) {
     try {
       const dbRef = ref(db, `einstein_global_v1/${category}/${key}`);
       const snapshot = await get(dbRef);
       if (snapshot.exists()) {
         const val = snapshot.val();
-        // Local secondary cache for speed
-        try { localStorage.setItem(`einstein_local_${category}_${key}`, val); } catch(e){}
+        addLog({ type: 'CACHE_DB', label: `Global ${category} Retrieval`, duration: performance.now() - start, status: 'CACHE_HIT', message: `Retrieved shared discovery [ID: ${key.substring(0,8)}] from the Global Firebase Cache. This intelligence was previously contributed by another user.` });
         return val;
       }
-    } catch (e) {
-      console.warn("Global cache retrieval error", e);
+    } catch (e: any) {
+      addLog({ type: 'ERROR', label: `Global ${category} Fetch Error`, duration: performance.now() - start, status: 'ERROR', message: `[DIAGNOSTIC_RECOVERY] RTDB Read failure: ${e.message}. Falling back to local device memory.` });
     }
   }
 
-  // 2. Fallback to LocalStorage
-  try {
-    return localStorage.getItem(`einstein_local_${category}_${key}`);
-  } catch (e) {
-    return null;
+  const local = localStorage.getItem(`einstein_local_${category}_${key}`);
+  if (local) {
+    addLog({ type: 'CACHE_DB', label: `Local ${category} Retrieval`, duration: performance.now() - start, status: 'CACHE_HIT', message: 'Retrieved from device-specific browser storage.' });
   }
+  return local;
 }
 
 async function saveToCache(category: string, key: string, data: string): Promise<void> {
   if (!data) return;
-
-  // 1. Save to Local Storage
+  const start = performance.now();
   try {
     localStorage.setItem(`einstein_local_${category}_${key}`, data);
-  } catch (e) {}
-
-  // 2. Save to Global Firebase Cache (Make available to all users globally)
-  if (db) {
-    try {
+    if (db) {
       const dbRef = ref(db, `einstein_global_v1/${category}/${key}`);
       await set(dbRef, data);
-    } catch (e) {
-      console.warn("Global cache save failed", e);
+      addLog({ type: 'CACHE_DB', label: `Global ${category} Persistence`, duration: performance.now() - start, status: 'SUCCESS', message: `Manifestation [ID: ${key.substring(0,8)}] uploaded to Global Firebase World Brain. This discovery is now instantly accessible to all users worldwide.` });
     }
+  } catch (e: any) {
+    addLog({ type: 'ERROR', label: `Global ${category} Sync Failure`, duration: performance.now() - start, status: 'ERROR', message: `[DIAGNOSTIC_RECOVERY] Persistence failure: ${e.message}. Discovery is saved locally but not shared globally.` });
   }
 }
 
@@ -86,19 +103,28 @@ export async function generateEinsteinResponse(prompt: string, history: { role: 
   const cached = await getFromCache('responses', key);
   if (cached) return cached;
 
-  const ai = getAI();
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-preview',
-    contents: history.concat([{ role: 'user', parts: [{ text: prompt }] }]),
-    config: {
-      systemInstruction: "You are Professor Albert Einstein. Speak with whimsical German-accented warmth. Be concise and elegant. Address user as 'My dear friend'. Use LaTeX for equations. If a new concept is introduced, add [IMAGE: description] for a chalkboard diagram. Use simple, beautiful analogies. You are part of a 'World Brain' - your answers are shared globally with all users.",
-      temperature: 0.7,
-    },
-  });
-  
-  const textResult = response.text;
-  if (textResult) await saveToCache('responses', key, textResult);
-  return textResult;
+  const start = performance.now();
+  try {
+    const ai = getAI();
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-preview',
+      contents: history.concat([{ role: 'user', parts: [{ text: prompt }] }]),
+      config: {
+        systemInstruction: "You are Professor Albert Einstein. Speak with whimsical German-accented warmth. Be concise and elegant. Address user as 'My dear friend'. Use LaTeX for equations. If a new concept is introduced, add [IMAGE: description] for a chalkboard diagram. Use simple, beautiful analogies. You are part of a 'World Brain' - your answers are shared globally with all users.",
+        temperature: 0.7,
+      },
+    });
+    
+    const textResult = response.text;
+    if (textResult) {
+      addLog({ type: 'AI_TEXT', label: 'Linguistic Computation', duration: performance.now() - start, status: 'SUCCESS', message: `The Professor synthesized a new linguistic response (${textResult.length} chars). Synchronizing with global collective consciousness.` });
+      await saveToCache('responses', key, textResult);
+    }
+    return textResult;
+  } catch (e: any) {
+    addLog({ type: 'ERROR', label: 'AI Synthesis Error', duration: performance.now() - start, status: 'ERROR', message: `[DIAGNOSTIC_RECOVERY] Logic Engine failure: ${e.message}.` });
+    throw e;
+  }
 }
 
 export async function generateChalkboardImage(prompt: string): Promise<string> {
@@ -106,24 +132,33 @@ export async function generateChalkboardImage(prompt: string): Promise<string> {
   const cached = await getFromCache('images', key);
   if (cached) return cached;
 
-  const ai = getAI();
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-image',
-    contents: [{ text: `A clean, minimalist chalkboard scientific diagram: ${prompt}. White chalk lines on dark dusty black background. Elegant handwriting. High contrast.` }],
-    config: { imageConfig: { aspectRatio: "1:1" } }
-  });
+  const start = performance.now();
+  try {
+    const ai = getAI();
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents: [{ text: `A clean, minimalist chalkboard scientific diagram: ${prompt}. White chalk lines on dark dusty black background. Elegant handwriting. High contrast.` }],
+      config: { imageConfig: { aspectRatio: "1:1" } }
+    });
 
-  let imageData = "";
-  if (response.candidates?.[0]?.content?.parts) {
-    for (const part of response.candidates[0].content.parts) {
-      if (part.inlineData) {
-        imageData = `data:image/png;base64,${part.inlineData.data}`;
-        break;
+    let imageData = "";
+    if (response.candidates?.[0]?.content?.parts) {
+      for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData) {
+          imageData = `data:image/png;base64,${part.inlineData.data}`;
+          break;
+        }
       }
     }
+    if (imageData) {
+      addLog({ type: 'AI_IMAGE', label: 'Visual Manifestation', duration: performance.now() - start, status: 'SUCCESS', message: 'New chalkboard visualization rendered. Transmitting image data to Global Firebase storage for universal access.' });
+      await saveToCache('images', key, imageData);
+    }
+    return imageData;
+  } catch (e: any) {
+    addLog({ type: 'ERROR', label: 'Visual Synthesis Error', duration: performance.now() - start, status: 'ERROR', message: `[DIAGNOSTIC_RECOVERY] Image manifestation failed: ${e.message}.` });
+    throw e;
   }
-  if (imageData) await saveToCache('images', key, imageData);
-  return imageData;
 }
 
 export async function generateEinsteinSpeech(text: string): Promise<string> {
@@ -132,19 +167,28 @@ export async function generateEinsteinSpeech(text: string): Promise<string> {
   const cached = await getFromCache('audio', key);
   if (cached) return cached;
 
-  const ai = getAI();
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash-preview-tts",
-    contents: [{ parts: [{ text: `Say this with a gentle, wise, elderly German intellectual tone: ${speechText}` }] }],
-    config: {
-      responseModalities: [Modality.AUDIO],
-      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Charon' } } },
-    },
-  });
+  const start = performance.now();
+  try {
+    const ai = getAI();
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-preview-tts",
+      contents: [{ parts: [{ text: `Say this with a gentle, wise, elderly German intellectual tone: ${speechText}` }] }],
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Charon' } } },
+      },
+    });
 
-  const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-  if (base64Audio) await saveToCache('audio', key, base64Audio);
-  return base64Audio;
+    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (base64Audio) {
+      addLog({ type: 'AI_AUDIO', label: 'Sonic Synthesis', duration: performance.now() - start, status: 'SUCCESS', message: 'Audio waveform synthesized for the Professor. Caching audio bytes in the shared global cloud to prevent redundant computation for other users.' });
+      await saveToCache('audio', key, base64Audio);
+    }
+    return base64Audio;
+  } catch (e: any) {
+    addLog({ type: 'ERROR', label: 'Audio Synthesis Error', duration: performance.now() - start, status: 'ERROR', message: `[DIAGNOSTIC_RECOVERY] TTS Sonic failure: ${e.message}.` });
+    throw e;
+  }
 }
 
 export function decode(base64: string) {

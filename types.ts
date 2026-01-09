@@ -1,3 +1,4 @@
+
 export enum Era {
   Introduction = 'Introduction',
   Foundations = 'Foundations',
@@ -23,4 +24,15 @@ export interface Chapter {
   title: string;
   description: string;
   prompt: string;
+}
+
+export interface LogEntry {
+  id: string;
+  type: 'AI_TEXT' | 'AI_IMAGE' | 'AI_AUDIO' | 'CACHE_DB' | 'ERROR' | 'SYSTEM';
+  label: string;
+  duration: number;
+  status: 'SUCCESS' | 'ERROR' | 'CACHE_HIT';
+  message: string;
+  timestamp: number;
+  metadata?: any;
 }
