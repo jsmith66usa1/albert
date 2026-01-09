@@ -43,7 +43,7 @@ try {
   const dbUrl = firebaseConfig.databaseURL || (firebaseConfig.projectId ? `https://${firebaseConfig.projectId}-default-rtdb.firebaseio.com/` : undefined);
   if (dbUrl) {
     db = getDatabase(app, dbUrl);
-    addLog({ type: 'CACHE_DB', label: 'Firebase Sync', duration: performance.now() - startDb, status: 'SUCCESS', message: 'Successfully connected to the World Brain. Your discoveries are now shared globally with all users.' });
+    addLog({ type: 'CACHE_DB', label: 'Firebase Sync', duration: performance.now() - startDb, status: 'SUCCESS', message: 'Successfully connected to the World Brain. Your discoveries are now shared globally with all users in real-time via Firebase.' });
   }
 } catch (e: any) {
   addLog({ type: 'ERROR', label: 'Firebase Offline', duration: 0, status: 'ERROR', message: `[DIAGNOSTIC_RECOVERY] Global sync unavailable. Discoveries will remain local to this device. Error: ${e.message}` });
@@ -67,7 +67,7 @@ async function getFromCache(category: string, key: string): Promise<any> {
       const snapshot = await get(dbRef);
       if (snapshot.exists()) {
         const val = snapshot.val();
-        addLog({ type: 'CACHE_DB', label: `Global ${category} Retrieval`, duration: performance.now() - start, status: 'CACHE_HIT', message: `Retrieved shared discovery [ID: ${key.substring(0,8)}] from the Global Firebase Cache. This intelligence was previously contributed by another user.` });
+        addLog({ type: 'CACHE_DB', label: `Global ${category} Retrieval`, duration: performance.now() - start, status: 'CACHE_HIT', message: `Retrieved shared discovery [ID: ${key.substring(0,8)}] from the Global Firebase Cache. This intelligence (text/image/audio) was previously contributed by another user to the World Brain.` });
         return val;
       }
     } catch (e: any) {
@@ -86,14 +86,18 @@ async function saveToCache(category: string, key: string, data: string): Promise
   if (!data) return;
   const start = performance.now();
   try {
-    localStorage.setItem(`einstein_local_${category}_${key}`, data);
+    // Attempt local cache first
+    try {
+      localStorage.setItem(`einstein_local_${category}_${key}`, data);
+    } catch (localErr) {}
+
     if (db) {
       const dbRef = ref(db, `einstein_global_v1/${category}/${key}`);
       await set(dbRef, data);
-      addLog({ type: 'CACHE_DB', label: `Global ${category} Persistence`, duration: performance.now() - start, status: 'SUCCESS', message: `Manifestation [ID: ${key.substring(0,8)}] uploaded to Global Firebase World Brain. This discovery is now instantly accessible to all users worldwide.` });
+      addLog({ type: 'CACHE_DB', label: `Global ${category} Persistence`, duration: performance.now() - start, status: 'SUCCESS', message: `Manifestation [ID: ${key.substring(0,8)}] successfully synchronized with the Global Firebase World Brain. This discovery (text/image/audio) is now instantly available to every user on the planet.` });
     }
   } catch (e: any) {
-    addLog({ type: 'ERROR', label: `Global ${category} Sync Failure`, duration: performance.now() - start, status: 'ERROR', message: `[DIAGNOSTIC_RECOVERY] Persistence failure: ${e.message}. Discovery is saved locally but not shared globally.` });
+    addLog({ type: 'ERROR', label: `Global ${category} Sync Failure`, duration: performance.now() - start, status: 'ERROR', message: `[DIAGNOSTIC_RECOVERY] Global Persistence failure: ${e.message}. Discovery is currently isolated to this observer's session.` });
   }
 }
 
@@ -117,7 +121,7 @@ export async function generateEinsteinResponse(prompt: string, history: { role: 
     
     const textResult = response.text;
     if (textResult) {
-      addLog({ type: 'AI_TEXT', label: 'Linguistic Computation', duration: performance.now() - start, status: 'SUCCESS', message: `The Professor synthesized a new linguistic response (${textResult.length} chars). Synchronizing with global collective consciousness.` });
+      addLog({ type: 'AI_TEXT', label: 'Linguistic Computation', duration: performance.now() - start, status: 'SUCCESS', message: `The Professor synthesized a new linguistic response. Synchronizing this text data with the Global World Brain via Firebase.` });
       await saveToCache('responses', key, textResult);
     }
     return textResult;
@@ -151,7 +155,7 @@ export async function generateChalkboardImage(prompt: string): Promise<string> {
       }
     }
     if (imageData) {
-      addLog({ type: 'AI_IMAGE', label: 'Visual Manifestation', duration: performance.now() - start, status: 'SUCCESS', message: 'New chalkboard visualization rendered. Transmitting image data to Global Firebase storage for universal access.' });
+      addLog({ type: 'AI_IMAGE', label: 'Visual Manifestation', duration: performance.now() - start, status: 'SUCCESS', message: 'New chalkboard visualization rendered. Transmitting binary image data to the Global Firebase cluster for universal synchronization.' });
       await saveToCache('images', key, imageData);
     }
     return imageData;
@@ -181,7 +185,7 @@ export async function generateEinsteinSpeech(text: string): Promise<string> {
 
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (base64Audio) {
-      addLog({ type: 'AI_AUDIO', label: 'Sonic Synthesis', duration: performance.now() - start, status: 'SUCCESS', message: 'Audio waveform synthesized for the Professor. Caching audio bytes in the shared global cloud to prevent redundant computation for other users.' });
+      addLog({ type: 'AI_AUDIO', label: 'Sonic Synthesis', duration: performance.now() - start, status: 'SUCCESS', message: 'Audio waveform synthesized for the Professor. Streaming audio bytes to the Global Firebase Cache so all users share the same voice.' });
       await saveToCache('audio', key, base64Audio);
     }
     return base64Audio;
