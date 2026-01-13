@@ -17,11 +17,6 @@ let performanceLogs: LogEntry[] = [];
 export const getPerformanceLogs = () => performanceLogs;
 export const clearPerformanceLogs = () => { performanceLogs = []; };
 
-/**
- * TELEMETRY STREAM
- * Strictly isolated from the text stream. 
- * Dispatches events to the Log Modal listener only.
- */
 const addLog = (entry: Omit<LogEntry, 'id' | 'timestamp'>) => {
   const newLog: LogEntry = {
     ...entry,
@@ -44,7 +39,7 @@ try {
       label: 'World Brain Online', 
       duration: performance.now() - startDb, 
       status: 'SUCCESS', 
-      message: 'Telemetry system initialized. All technical data routed to LOG modal.' 
+      message: 'Telemetry system initialized. Global text registry connected.' 
     });
   }
 } catch (e: any) {
@@ -63,7 +58,8 @@ async function generateCacheKey(input: string): Promise<string> {
 
 async function getFromCache(category: string, key: string): Promise<any> {
   const start = performance.now();
-  if (db) {
+  
+  if (category === 'responses' && db) {
     try {
       const dbRef = ref(db, `world_brain_v8/${category}/${key}`);
       const snapshot = await get(dbRef);
@@ -71,48 +67,56 @@ async function getFromCache(category: string, key: string): Promise<any> {
         const val = snapshot.val();
         addLog({ 
           type: 'CACHE_DB', 
-          label: `Cache Hit: ${category}`, 
+          label: `Global Hit: ${category}`, 
           duration: performance.now() - start, 
           status: 'CACHE_HIT', 
-          message: `Technical data recovered for ${key.substring(0,8)}.` 
+          message: `Shared knowledge retrieved from Global Brain. Key: ${key}` 
         });
         return val;
       }
     } catch (e) {}
   }
+
   try {
     const local = localStorage.getItem(`discovery_v8_${category}_${key}`);
-    if (local) return local;
+    if (local) {
+      addLog({ 
+        type: 'CACHE_DB', 
+        label: `Local Hit: ${category}`, 
+        duration: performance.now() - start, 
+        status: 'CACHE_HIT', 
+        message: `Local asset found in storage. Key: ${key}` 
+      });
+      return local;
+    }
   } catch (e) {}
+
   return null;
 }
 
 async function saveToCache(category: string, key: string, data: string): Promise<void> {
   if (!data) return;
   const start = performance.now();
-  if (db) {
+  
+  if (category === 'responses' && db) {
     try {
       const dbRef = ref(db, `world_brain_v8/${category}/${key}`);
-      set(dbRef, data).catch(() => {});
+      await set(dbRef, data);
       addLog({ 
         type: 'CACHE_DB', 
-        label: `Sync: ${category}`, 
+        label: `Global Sync: ${category}`, 
         duration: performance.now() - start, 
         status: 'SUCCESS', 
-        message: `Knowledge propagated to Global Brain.` 
+        message: `Knowledge permanently shared. Key: ${key}` 
       });
     } catch (e) {}
   }
+
   try {
     localStorage.setItem(`discovery_v8_${category}_${key}`, data);
   } catch (e) {}
 }
 
-/**
- * PRIMARY TEXT STREAM
- * Strictly contains Professor Einstein's dialogue.
- * No log information is ever appended to the return value.
- */
 export async function generateEinsteinResponse(prompt: string, history: { role: string, parts: { text: string }[] }[]) {
   const cacheInput = JSON.stringify({ history, prompt });
   const key = await generateCacheKey(cacheInput);
@@ -121,14 +125,18 @@ export async function generateEinsteinResponse(prompt: string, history: { role: 
   if (cached) return cached;
 
   const start = performance.now();
+  const model = 'gemini-3-pro-preview';
+  const systemInstruction = "You are Professor Albert Einstein. Speak with a strong, whimsical German accent (e.g., use 'v' for 'w', 'z' for 'th' where appropriate, or simply write in a way that implies the cadence). Use whimsical warmth. Use LaTeX for math. Use [IMAGE: description] for visuals. NEVER output technical log data.";
+  const temperature = 0.7;
+
   try {
     const ai = getAI();
     const result = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: model,
       contents: history.concat([{ role: 'user', parts: [{ text: prompt }] }]),
       config: {
-        systemInstruction: "You are Professor Albert Einstein. Use whimsical warmth. Use LaTeX for math. Use [IMAGE: description] for visuals. NEVER output technical log data or internal reasoning in your response.",
-        temperature: 0.7,
+        systemInstruction: systemInstruction,
+        temperature: temperature,
       },
     });
     
@@ -137,18 +145,35 @@ export async function generateEinsteinResponse(prompt: string, history: { role: 
       await saveToCache('responses', key, textResult);
       addLog({ 
         type: 'AI_TEXT', 
-        label: 'Linguistic Synthesis', 
+        label: 'Dialogue Generation', 
         duration: performance.now() - start, 
         status: 'SUCCESS', 
-        message: 'Dialogue committed to registry.' 
+        message: 'Shared dialogue synthesized.',
+        metadata: {
+          studio_importable: true,
+          model,
+          config: { systemInstruction, temperature },
+          request: { prompt, history_length: history.length }
+        }
       });
     }
     return textResult;
   } catch (e: any) {
     if (e.name === 'Canceled') return "";
-    addLog({ type: 'ERROR', label: 'Synthesis Error', duration: performance.now() - start, status: 'ERROR', message: e.message });
-    // Return a graceful Einsteinian error instead of technical jargon
-    return "Ach, my dear friend. It seems the universe is temporarily folding in on itself. Let us try that thought again.";
+    addLog({ 
+      type: 'ERROR', 
+      label: 'AI Studio Debug Info', 
+      duration: performance.now() - start, 
+      status: 'ERROR', 
+      message: e.message,
+      metadata: {
+        studio_importable: true,
+        error_type: e.name,
+        stack: e.stack,
+        request_context: { model, prompt, temperature }
+      }
+    });
+    return "Ach, my dear friend. It seems ze universe is temporarily folding in on itself. Let us try zat thought again.";
   }
 }
 
@@ -158,10 +183,11 @@ export async function generateChalkboardImage(prompt: string): Promise<string> {
   if (cached) return cached;
 
   const start = performance.now();
+  const model = 'gemini-2.5-flash-image';
   try {
     const ai = getAI();
     const result = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
+      model: model,
       contents: [{ text: `Minimalist scientific chalkboard diagram: ${prompt}. White chalk on black background.` }],
       config: { imageConfig: { aspectRatio: "1:1" } }
     });
@@ -177,34 +203,47 @@ export async function generateChalkboardImage(prompt: string): Promise<string> {
     }
     if (imageData) {
       await saveToCache('images', key, imageData);
-      addLog({ 
-        type: 'AI_IMAGE', 
-        label: 'Visual Manifestation', 
-        duration: performance.now() - start, 
-        status: 'SUCCESS', 
-        message: 'Image synced to registry.' 
+      addLog({
+        type: 'AI_IMAGE',
+        label: 'Image Manifestation',
+        duration: performance.now() - start,
+        status: 'SUCCESS',
+        message: 'Chalkboard visualization complete.',
+        metadata: { studio_importable: true, model, prompt }
       });
     }
     return imageData;
   } catch (e: any) {
-    if (e.name === 'Canceled') return "";
-    addLog({ type: 'ERROR', label: 'Image Error', duration: performance.now() - start, status: 'ERROR', message: e.message });
+    addLog({ 
+      type: 'ERROR', 
+      label: 'Image Generation Error', 
+      duration: performance.now() - start, 
+      status: 'ERROR', 
+      message: e.message,
+      metadata: { studio_importable: true, model, prompt, error: e.toString() }
+    });
     throw e;
   }
 }
 
 export async function generateEinsteinSpeech(text: string): Promise<string> {
-  const speechText = text.replace(/\[IMAGE:.*?\]/g, '').trim();
-  const key = await generateCacheKey(speechText);
+  // OPTIMIZATION: Latency analysis suggests long text increases TTS processing time.
+  // We strip images and take only the first 500 characters for immediate vocal feedback, 
+  // or focus on the core message to reduce token overhead.
+  const speechText = text.replace(/\[IMAGE:.*?\]/g, '').replace(/\$.*?\$/g, 'mathematical equations').trim();
+  const optimizedSpeechText = speechText.length > 600 ? speechText.substring(0, 580) + "..." : speechText;
+  
+  const key = await generateCacheKey(optimizedSpeechText);
   const cached = await getFromCache('audio', key);
   if (cached) return cached;
 
   const start = performance.now();
+  const model = "gemini-2.5-flash-preview-tts";
   try {
     const ai = getAI();
     const result = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text: `Einstein: ${speechText}` }] }],
+      model: model,
+      contents: [{ parts: [{ text: `Read with a whimsical German accent: ${optimizedSpeechText}` }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Charon' } } },
@@ -213,18 +252,25 @@ export async function generateEinsteinSpeech(text: string): Promise<string> {
     const base64 = result.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (base64) {
       await saveToCache('audio', key, base64);
-      addLog({ 
-        type: 'AI_AUDIO', 
-        label: 'Sonic Synthesis', 
-        duration: performance.now() - start, 
-        status: 'SUCCESS', 
-        message: 'Audio synthesized and cached.' 
+      addLog({
+        type: 'AI_AUDIO',
+        label: 'Vocal Synthesis',
+        duration: performance.now() - start,
+        status: 'SUCCESS',
+        message: 'Audio output generated (optimized for latency).',
+        metadata: { studio_importable: true, model, text_length: optimizedSpeechText.length }
       });
     }
     return base64 || "";
   } catch (e: any) {
-    if (e.name === 'Canceled') return "";
-    addLog({ type: 'ERROR', label: 'Audio Error', duration: 0, status: 'ERROR', message: e.message });
+    addLog({ 
+      type: 'ERROR', 
+      label: 'Speech Synthesis Error', 
+      duration: performance.now() - start, 
+      status: 'ERROR', 
+      message: e.message,
+      metadata: { studio_importable: true, model, error: e.toString() }
+    });
     throw e;
   }
 }

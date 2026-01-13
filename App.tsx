@@ -28,6 +28,7 @@ const App: React.FC = () => {
   
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const logScrollRef = useRef<HTMLDivElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -43,6 +44,12 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (isLogOpen && logScrollRef.current) {
+      logScrollRef.current.scrollTop = 0;
+    }
+  }, [isLogOpen]);
+
+  useEffect(() => {
     if (isDarkMode) document.body.classList.remove('light-mode');
     else document.body.classList.add('light-mode');
   }, [isDarkMode]);
@@ -56,18 +63,14 @@ const App: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Handle scroll behavior
   useEffect(() => {
     if (messages.length > 0) {
-      // If we only have 1 message, we likely just started a new era. Reset to top.
       if (messages.length === 1 && chatContainerRef.current) {
         chatContainerRef.current.scrollTo({ top: 0, behavior: 'auto' });
       } else {
-        // Otherwise, scroll to bottom to follow the conversation.
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       }
     }
-    
     if ((window as any).MathJax) {
       (window as any).MathJax.typesetPromise?.().catch(() => null);
     }
@@ -138,10 +141,8 @@ const App: React.FC = () => {
 
       const imageMatch = responseText.match(/\[IMAGE: (.*?)\]/);
       let cleanedText = responseText;
-      
       const newMessage: Message = { role: 'einstein', text: cleanedText, timestamp: Date.now() };
       
-      // If setting a new era, we clear existing messages and reset scroll to top immediately after state update
       if (isNewEra) {
         setMessages([newMessage]);
         if (chatContainerRef.current) {
@@ -189,7 +190,6 @@ const App: React.FC = () => {
     setIsDropdownOpen(false);
     const chapter = CHAPTERS.find(c => c.id === era);
     if (chapter) {
-      // Force scroll reset
       if (chatContainerRef.current) chatContainerRef.current.scrollTo({ top: 0 });
       setMessages([]);
       handleAction(chapter.prompt, era, true);
@@ -219,6 +219,28 @@ const App: React.FC = () => {
     handleAction(input);
   };
 
+  const handleExportForStudio = () => {
+    const diagnosticBundle = {
+      session: {
+        timestamp: new Date().toISOString(),
+        currentEra,
+        messageCount: messages.length,
+      },
+      telemetry: logs.map(log => ({
+        ...log,
+        studio_formatted_time: new Date(log.timestamp).toISOString(),
+      })),
+      context: messages.slice(-5) // Send last few messages for context
+    };
+    const blob = new Blob([JSON.stringify(diagnosticBundle, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `einstein-studio-telemetry-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const stars = useMemo(() => Array.from({ length: 100 }).map((_, i) => ({
     top: `${Math.random() * 100}%`,
     left: `${Math.random() * 100}%`,
@@ -229,7 +251,6 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full bg-theme text-theme">
-      {/* Starting Screen */}
       {!hasStarted && (
         <div className="flex-1 flex flex-col items-center justify-center p-6 relative" style={{ backgroundColor: '#09090b', color: '#fff', position: 'fixed', inset: 0, zIndex: 1000 }}>
           <div className="absolute" style={{ inset: 0, overflow: 'hidden' }}>
@@ -248,7 +269,6 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Header */}
       <header className="header flex items-center justify-between z-50">
         <div className="flex items-center gap-4">
           <div className="flex items-center justify-center" style={{ width: '36px', height: '36px', borderRadius: '10px', backgroundColor: 'var(--accent)', fontWeight: 900, color: '#fff' }}>AE</div>
@@ -279,7 +299,6 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Content */}
       <div className="main-content">
         <section className="chat-sidebar">
           <div ref={chatContainerRef} className="flex-1 overflow-y-auto no-scrollbar scroll-smooth" style={{ padding: '2rem' }}>
@@ -308,7 +327,6 @@ const App: React.FC = () => {
         </section>
       </div>
 
-      {/* Footer */}
       <footer className="footer z-50">
         <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', display: 'flex', flexDirection: 'column' }}>
           <div className="flex gap-3" style={{ marginBottom: '1.25rem' }}>
@@ -364,45 +382,57 @@ const App: React.FC = () => {
         </div>
       </footer>
 
-      {/* Log Modal */}
       {isLogOpen && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)' }}>
-          <div className="bg-theme border-theme flex flex-col shadow-2xl" style={{ width: '100%', maxWidth: '800px', maxHeight: '90vh', borderRadius: '2rem', overflow: 'hidden', background: 'var(--glass-bg)' }}>
-            <div className="flex items-center justify-between p-6 border-b border-theme">
+        <div className="fixed inset-0 z-[1000] flex flex-col items-center justify-start p-4 md:p-12 overflow-hidden" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)' }}>
+          <div className="bg-theme border-theme flex flex-col shadow-2xl w-full h-full max-w-6xl animate-modal-in" style={{ borderRadius: '2.5rem', overflow: 'hidden', background: 'var(--glass-bg)', border: '1px solid var(--border-color)' }}>
+            <div className="flex items-center justify-between p-8 border-b border-theme bg-opacity-50" style={{ background: 'rgba(0,0,0,0.1)' }}>
               <div className="flex flex-col">
-                <h2 className="serif" style={{ fontSize: '1.25rem', fontWeight: 900 }}>Observer's Telemetry</h2>
-                <span style={{ fontSize: '10px', opacity: 0.6 }}>Technical execution data for the current session.</span>
+                <h2 className="serif" style={{ fontSize: '1.75rem', fontWeight: 900, letterSpacing: '-0.02em' }}>Observer's Telemetry</h2>
+                <span style={{ fontSize: '12px', opacity: 0.5, fontWeight: 500, marginTop: '4px' }}>Technical execution and registry synchronization data.</span>
               </div>
-              <div className="flex gap-4">
+              <div className="flex gap-4 items-center">
+                <button 
+                  onClick={handleExportForStudio} 
+                  style={{ padding: '0.7rem 1.2rem', borderRadius: '1rem', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', background: '#10b981', color: '#fff', border: 'none' }}
+                >
+                  EXPORT FOR STUDIO
+                </button>
                 <button 
                   onClick={() => { clearPerformanceLogs(); setLogs([]); }} 
-                  style={{ padding: '0.4rem 0.8rem', borderRadius: '0.5rem', fontSize: '10px', fontWeight: 900 }}
+                  style={{ padding: '0.7rem 1.2rem', borderRadius: '1rem', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase' }}
                 >
-                  CLEAR LOGS
+                  RESET REGISTRY
                 </button>
                 <button 
                   onClick={() => setIsLogOpen(false)} 
-                  style={{ width: '32px', height: '32px', borderRadius: '50%', fontSize: '14px', fontWeight: 900 }}
+                  style={{ width: '48px', height: '48px', borderRadius: '50%', fontSize: '18px', fontWeight: 900, border: 'none', background: 'var(--accent)', color: '#fff' }}
                 >
                   ✕
                 </button>
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4 font-mono no-scrollbar">
+            <div 
+              ref={logScrollRef}
+              className="flex-1 overflow-y-auto p-8 flex flex-col gap-6 font-mono no-scrollbar" 
+              style={{ scrollBehavior: 'smooth' }}
+            >
               {logs.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-20 opacity-30">
-                  <span style={{ fontSize: '40px', marginBottom: '1rem' }}>📡</span>
-                  <p style={{ fontWeight: 900, fontSize: '11px' }}>NO TELEMETRY RECORDED</p>
+                <div className="flex flex-col items-center justify-center py-32 opacity-20">
+                  <span style={{ fontSize: '64px', marginBottom: '2rem' }}>📡</span>
+                  <p style={{ fontWeight: 900, fontSize: '14px', letterSpacing: '0.2em' }}>NO TELEMETRY RECORDED</p>
                 </div>
               ) : (
                 logs.map(log => (
-                  <div key={log.id} className="p-4 border-theme rounded-xl" style={{ backgroundColor: 'var(--input-bg)', borderLeft: `4px solid ${log.status === 'ERROR' ? '#ef4444' : 'var(--accent)'}` }}>
-                    <div className="flex justify-between items-start mb-2">
-                      <span style={{ fontSize: '10px', fontWeight: 900, color: 'var(--accent)' }}>{log.type}</span>
-                      <span style={{ fontSize: '10px', opacity: 0.5 }}>{Math.round(log.duration)}ms</span>
+                  <div key={log.id} className="p-6 border-theme rounded-2xl transition-all hover:translate-x-1" style={{ backgroundColor: 'rgba(0,0,0,0.15)', borderLeft: `6px solid ${log.status === 'ERROR' ? '#ef4444' : log.status === 'CACHE_HIT' ? '#10b981' : 'var(--accent)'}` }}>
+                    <div className="flex justify-between items-start mb-3">
+                      <div className="flex items-center gap-3">
+                         <span style={{ fontSize: '11px', fontWeight: 900, color: 'var(--accent)', background: 'rgba(99, 102, 241, 0.1)', padding: '4px 10px', borderRadius: '6px' }}>{log.type}</span>
+                         <span style={{ fontSize: '11px', opacity: 0.4, fontWeight: 800 }}>{new Date(log.timestamp).toLocaleTimeString()}</span>
+                      </div>
+                      <span style={{ fontSize: '11px', opacity: 0.6, fontWeight: 900 }}>{Math.round(log.duration)}MS</span>
                     </div>
-                    <div style={{ fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>{log.label}</div>
-                    <div style={{ fontSize: '11px', opacity: 0.8 }}>{log.message}</div>
+                    <div style={{ fontSize: '14px', fontWeight: 800, marginBottom: '6px', color: 'var(--text-color)' }}>{log.label}</div>
+                    <div style={{ fontSize: '13px', opacity: 0.7, lineHeight: 1.5 }}>{log.message}</div>
                   </div>
                 ))
               )}
@@ -410,6 +440,13 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
+      <style>{`
+        @keyframes modal-in {
+          from { opacity: 0; transform: translateY(-40px) scale(0.98); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .animate-modal-in { animation: modal-in 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+      `}</style>
     </div>
   );
 };
