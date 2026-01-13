@@ -6,6 +6,17 @@
     <title>Einstein's Universe</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Fira+Code&display=swap" rel="stylesheet">
     <script>
+      // Fix for Monaco Editor web worker warning
+      window.MonacoEnvironment = {
+        getWorkerUrl: function (workerId, label) {
+          return `data:text/javascript;charset=utf-8,${encodeURIComponent(`
+            self.onmessage = function () {
+              // Fallback worker script to satisfy Monaco's worker creation check
+            };
+          `)}`;
+        }
+      };
+
       window.MathJax = {
         tex: {
           inlineMath: [['$', '$'], ['\\(', '\\)']],

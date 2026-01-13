@@ -15,6 +15,7 @@ const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentEra, setCurrentEra] = useState<Era>(Era.Introduction);
   const [isLoading, setIsLoading] = useState(false);
+  const [isImageLoading, setIsImageLoading] = useState(false);
   const [userInput, setUserInput] = useState('');
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [lastImage, setLastImage] = useState<string | null>(null);
@@ -35,6 +36,12 @@ const App: React.FC = () => {
   const faqDropdownRef = useRef<HTMLDivElement>(null);
 
   const currentChapter = useMemo(() => CHAPTERS.find(c => c.id === currentEra), [currentEra]);
+
+  const addSystemLog = (label: string, message: string, status: 'SUCCESS' | 'ERROR' | 'CACHE_HIT' = 'SUCCESS') => {
+    window.dispatchEvent(new CustomEvent('performance_log_updated', {
+      detail: { type: 'SYSTEM', label, message, status, duration: 0 }
+    }));
+  };
 
   useEffect(() => {
     const updateLogs = () => setLogs([...getPerformanceLogs()]);
@@ -78,7 +85,10 @@ const App: React.FC = () => {
 
   const stopAudio = useCallback(() => {
     if (audioSourceRef.current) {
-      try { audioSourceRef.current.stop(); } catch (e) {}
+      try {
+        audioSourceRef.current.stop();
+        addSystemLog('Vocal Interruption', 'Professor speaking halted.', 'SUCCESS');
+      } catch (e) {}
       audioSourceRef.current = null;
     }
     setIsAudioPlaying(false);
@@ -113,6 +123,7 @@ const App: React.FC = () => {
       if (err.name !== 'Canceled') {
         setIsAudioPlaying(false);
         setCurrentlySpeakingId(null);
+        addSystemLog('Audio Fault', `Speech engine failed: ${err.message}`, 'ERROR');
       }
     }
   };
@@ -130,6 +141,8 @@ const App: React.FC = () => {
 
   const handleAction = async (promptText: string, eraToSet?: Era, isNewEra: boolean = false) => {
     setIsLoading(true);
+    stopAudio();
+
     const history = isNewEra ? [] : messages.map(m => ({
       role: m.role === 'einstein' ? 'model' : 'user',
       parts: [{ text: m.text }]
@@ -157,15 +170,24 @@ const App: React.FC = () => {
       if (imageMatch) {
         const imagePrompt = imageMatch[1];
         cleanedText = responseText.replace(imageMatch[0], '').trim();
+        setIsImageLoading(true);
         try {
           const imageUrl = await generateChalkboardImage(imagePrompt);
           if (imageUrl) setLastImage(imageUrl);
         } catch (e: any) {
-          if (e.name !== 'Canceled') console.error("Image Manifestation Failed", e);
+          if (e.name !== 'Canceled') {
+             console.error("Image Manifestation Failed", e);
+             addSystemLog('Visual Error', `Chalkboard image generation failed: ${e.message}`, 'ERROR');
+          }
+        } finally {
+          setIsImageLoading(false);
         }
       }
     } catch (err: any) {
-      if (err.name !== 'Canceled') console.error("Synthesis failed", err);
+      if (err.name !== 'Canceled') {
+        console.error("Synthesis failed", err);
+        addSystemLog('Synthesis Fault', `The model failed to converge: ${err.message}`, 'ERROR');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -230,7 +252,7 @@ const App: React.FC = () => {
         ...log,
         studio_formatted_time: new Date(log.timestamp).toISOString(),
       })),
-      context: messages.slice(-5) // Send last few messages for context
+      context: messages.slice(-5)
     };
     const blob = new Blob([JSON.stringify(diagnosticBundle, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -315,9 +337,20 @@ const App: React.FC = () => {
         </section>
 
         <section className="chalkboard-area">
-          <div className="flex items-center justify-center w-full h-full">
+          <div className="flex flex-col items-center justify-center w-full h-full relative">
+            {isImageLoading && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black bg-opacity-40 backdrop-blur-sm rounded-3xl animate-pulse">
+                <span style={{ fontSize: '24px', marginBottom: '1rem' }}>✍️</span>
+                <p style={{ fontWeight: 900, fontSize: '11px', letterSpacing: '0.2em', color: '#fff' }}>MANIFESTING THEORY...</p>
+              </div>
+            )}
             {lastImage ? (
-              <img src={lastImage} className="chalkboard-filter" alt="Manifested Theory" />
+              <img 
+                src={lastImage} 
+                className={`chalkboard-filter transition-opacity duration-700 ${isImageLoading ? 'opacity-30' : 'opacity-100'}`} 
+                alt="Manifested Theory" 
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+              />
             ) : (
               <div style={{ opacity: 0.2, fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.5em' }}>
                 Awaiting Observation

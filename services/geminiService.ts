@@ -24,7 +24,7 @@ const addLog = (entry: Omit<LogEntry, 'id' | 'timestamp'>) => {
     timestamp: Date.now()
   };
   performanceLogs = [newLog, ...performanceLogs].slice(0, 100);
-  window.dispatchEvent(new CustomEvent('performance_log_updated'));
+  window.dispatchEvent(new CustomEvent('performance_log_updated', { detail: newLog }));
 };
 
 let db: any = null;
@@ -59,7 +59,8 @@ async function generateCacheKey(input: string): Promise<string> {
 async function getFromCache(category: string, key: string): Promise<any> {
   const start = performance.now();
   
-  if (category === 'responses' && db) {
+  // Try Global DB first for shared assets
+  if (db) {
     try {
       const dbRef = ref(db, `world_brain_v8/${category}/${key}`);
       const snapshot = await get(dbRef);
@@ -77,6 +78,7 @@ async function getFromCache(category: string, key: string): Promise<any> {
     } catch (e) {}
   }
 
+  // Fallback to Local Storage
   try {
     const local = localStorage.getItem(`discovery_v8_${category}_${key}`);
     if (local) {
@@ -98,7 +100,7 @@ async function saveToCache(category: string, key: string, data: string): Promise
   if (!data) return;
   const start = performance.now();
   
-  if (category === 'responses' && db) {
+  if (db) {
     try {
       const dbRef = ref(db, `world_brain_v8/${category}/${key}`);
       await set(dbRef, data);
@@ -107,7 +109,7 @@ async function saveToCache(category: string, key: string, data: string): Promise
         label: `Global Sync: ${category}`, 
         duration: performance.now() - start, 
         status: 'SUCCESS', 
-        message: `Knowledge permanently shared. Key: ${key}` 
+        message: `Knowledge permanently shared to Registry. Key: ${key}` 
       });
     } catch (e) {}
   }
@@ -166,12 +168,7 @@ export async function generateEinsteinResponse(prompt: string, history: { role: 
       duration: performance.now() - start, 
       status: 'ERROR', 
       message: e.message,
-      metadata: {
-        studio_importable: true,
-        error_type: e.name,
-        stack: e.stack,
-        request_context: { model, prompt, temperature }
-      }
+      metadata: { studio_importable: true, error_type: e.name, stack: e.stack }
     });
     return "Ach, my dear friend. It seems ze universe is temporarily folding in on itself. Let us try zat thought again.";
   }
@@ -179,6 +176,8 @@ export async function generateEinsteinResponse(prompt: string, history: { role: 
 
 export async function generateChalkboardImage(prompt: string): Promise<string> {
   const key = await generateCacheKey(prompt);
+  
+  // PERFORMANCE OPTIMIZATION: Check cache for existing diagram metadata/image bytes
   const cached = await getFromCache('images', key);
   if (cached) return cached;
 
@@ -188,8 +187,12 @@ export async function generateChalkboardImage(prompt: string): Promise<string> {
     const ai = getAI();
     const result = await ai.models.generateContent({
       model: model,
-      contents: [{ text: `Minimalist scientific chalkboard diagram: ${prompt}. White chalk on black background.` }],
-      config: { imageConfig: { aspectRatio: "1:1" } }
+      contents: [{ text: `Minimalist scientific chalkboard diagram: ${prompt}. Use thin, precise white chalk lines on a deep black background. High contrast, clean educational style.` }],
+      config: { 
+        imageConfig: { 
+          aspectRatio: "1:1"
+        } 
+      }
     });
 
     let imageData = "";
@@ -208,8 +211,8 @@ export async function generateChalkboardImage(prompt: string): Promise<string> {
         label: 'Image Manifestation',
         duration: performance.now() - start,
         status: 'SUCCESS',
-        message: 'Chalkboard visualization complete.',
-        metadata: { studio_importable: true, model, prompt }
+        message: 'Chalkboard visualization complete and cached.',
+        metadata: { studio_importable: true, model, prompt, key_ref: key }
       });
     }
     return imageData;
@@ -227,9 +230,6 @@ export async function generateChalkboardImage(prompt: string): Promise<string> {
 }
 
 export async function generateEinsteinSpeech(text: string): Promise<string> {
-  // OPTIMIZATION: Latency analysis suggests long text increases TTS processing time.
-  // We strip images and take only the first 500 characters for immediate vocal feedback, 
-  // or focus on the core message to reduce token overhead.
   const speechText = text.replace(/\[IMAGE:.*?\]/g, '').replace(/\$.*?\$/g, 'mathematical equations').trim();
   const optimizedSpeechText = speechText.length > 600 ? speechText.substring(0, 580) + "..." : speechText;
   
