@@ -27,7 +27,6 @@ const App: React.FC = () => {
   const [isLogOpen, setIsLogOpen] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   
-  const chatEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const logScrollRef = useRef<HTMLDivElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -51,12 +50,6 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (isLogOpen && logScrollRef.current) {
-      logScrollRef.current.scrollTop = 0;
-    }
-  }, [isLogOpen]);
-
-  useEffect(() => {
     if (isDarkMode) document.body.classList.remove('light-mode');
     else document.body.classList.add('light-mode');
   }, [isDarkMode]);
@@ -70,24 +63,27 @@ const App: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // SCROLL LOGIC: Scroll to the top when messages change (e.g. new era or new query)
+  // This is decoupled from any audio logic to ensure it doesn't cause clipping.
   useEffect(() => {
-    if (messages.length > 0) {
-      if (messages.length === 1 && chatContainerRef.current) {
-        chatContainerRef.current.scrollTo({ top: 0, behavior: 'auto' });
-      } else {
-        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-      }
+    if (messages.length > 0 && chatContainerRef.current) {
+      chatContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
     }
+  }, [messages.length]);
+
+  useEffect(() => {
     if ((window as any).MathJax) {
       (window as any).MathJax.typesetPromise?.().catch(() => null);
     }
   }, [messages]);
 
-  const stopAudio = useCallback(() => {
+  const stopAudio = useCallback((silent: boolean = false) => {
     if (audioSourceRef.current) {
       try {
-        audioSourceRef.current.stop();
-        addSystemLog('Vocal Interruption', 'Professor speaking halted.', 'SUCCESS');
+        const source = audioSourceRef.current;
+        source.onended = null;
+        source.stop();
+        if (!silent) addSystemLog('Vocal Interruption', 'Professor speaking halted.', 'SUCCESS');
       } catch (e) {}
       audioSourceRef.current = null;
     }
@@ -100,23 +96,43 @@ const App: React.FC = () => {
       stopAudio();
       return;
     }
+
     try {
-      stopAudio();
+      stopAudio(true); 
       setIsAudioPlaying(true);
       setCurrentlySpeakingId(msgId);
+      
       const base64 = await generateEinsteinSpeech(text);
-      if (!base64) return;
+      if (!base64) {
+        setIsAudioPlaying(false);
+        setCurrentlySpeakingId(null);
+        return;
+      }
+
       if (!audioContextRef.current) {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       }
+      
+      if (audioContextRef.current.state === 'suspended') {
+        await audioContextRef.current.resume();
+      }
+      
       const audioBuffer = await decodeAudioData(decode(base64), audioContextRef.current, 24000, 1);
       const source = audioContextRef.current.createBufferSource();
       source.buffer = audioBuffer;
       source.connect(audioContextRef.current.destination);
+      
       source.onended = () => {
-        setIsAudioPlaying(false);
-        setCurrentlySpeakingId(null);
+        setCurrentlySpeakingId(prev => {
+           if (prev === msgId) {
+             setIsAudioPlaying(false);
+             return null;
+           }
+           return prev;
+        });
+        audioSourceRef.current = null;
       };
+      
       audioSourceRef.current = source;
       source.start();
     } catch (err: any) {
@@ -141,7 +157,7 @@ const App: React.FC = () => {
 
   const handleAction = async (promptText: string, eraToSet?: Era, isNewEra: boolean = false) => {
     setIsLoading(true);
-    stopAudio();
+    if (isNewEra) stopAudio(true);
 
     const history = isNewEra ? [] : messages.map(m => ({
       role: m.role === 'einstein' ? 'model' : 'user',
@@ -158,26 +174,21 @@ const App: React.FC = () => {
       
       if (isNewEra) {
         setMessages([newMessage]);
-        if (chatContainerRef.current) {
-           chatContainerRef.current.scrollTo({ top: 0, behavior: 'auto' });
-        }
       } else {
-        setMessages(prev => [...prev, newMessage]);
+        setMessages(prev => [newMessage, ...prev]); // Prepend to keep latest at top
       }
       
       if (eraToSet) setCurrentEra(eraToSet);
 
       if (imageMatch) {
         const imagePrompt = imageMatch[1];
-        cleanedText = responseText.replace(imageMatch[0], '').trim();
         setIsImageLoading(true);
         try {
           const imageUrl = await generateChalkboardImage(imagePrompt);
           if (imageUrl) setLastImage(imageUrl);
         } catch (e: any) {
           if (e.name !== 'Canceled') {
-             console.error("Image Manifestation Failed", e);
-             addSystemLog('Visual Error', `Chalkboard image generation failed: ${e.message}`, 'ERROR');
+             addSystemLog('Visual Error', `Chalkboard generation failed.`, 'ERROR');
           }
         } finally {
           setIsImageLoading(false);
@@ -185,8 +196,7 @@ const App: React.FC = () => {
       }
     } catch (err: any) {
       if (err.name !== 'Canceled') {
-        console.error("Synthesis failed", err);
-        addSystemLog('Synthesis Fault', `The model failed to converge: ${err.message}`, 'ERROR');
+        addSystemLog('Synthesis Fault', `The model failed to converge.`, 'ERROR');
       }
     } finally {
       setIsLoading(false);
@@ -203,7 +213,7 @@ const App: React.FC = () => {
       case 'figures': inquiry = `Professor, who were the influential figures or pioneers during the era of ${currentEra}?`; break;
     }
     const userMsg: Message = { role: 'user', text: inquiry, timestamp: Date.now() };
-    setMessages(prev => [...prev, userMsg]);
+    setMessages(prev => [userMsg, ...prev]);
     handleAction(inquiry);
   };
 
@@ -212,7 +222,6 @@ const App: React.FC = () => {
     setIsDropdownOpen(false);
     const chapter = CHAPTERS.find(c => c.id === era);
     if (chapter) {
-      if (chatContainerRef.current) chatContainerRef.current.scrollTo({ top: 0 });
       setMessages([]);
       handleAction(chapter.prompt, era, true);
     }
@@ -235,7 +244,7 @@ const App: React.FC = () => {
     e.preventDefault();
     if (!userInput.trim() || isLoading) return;
     const userMsg: Message = { role: 'user', text: userInput, timestamp: Date.now() };
-    setMessages(prev => [...prev, userMsg]);
+    setMessages(prev => [userMsg, ...prev]);
     const input = userInput;
     setUserInput('');
     handleAction(input);
@@ -243,22 +252,14 @@ const App: React.FC = () => {
 
   const handleExportForStudio = () => {
     const diagnosticBundle = {
-      session: {
-        timestamp: new Date().toISOString(),
-        currentEra,
-        messageCount: messages.length,
-      },
-      telemetry: logs.map(log => ({
-        ...log,
-        studio_formatted_time: new Date(log.timestamp).toISOString(),
-      })),
-      context: messages.slice(-5)
+      session: { timestamp: new Date().toISOString(), currentEra, messageCount: messages.length },
+      telemetry: logs.map(log => ({ ...log, studio_formatted_time: new Date(log.timestamp).toISOString() })),
+      context: messages.slice(0, 5)
     };
     const blob = new Blob([JSON.stringify(diagnosticBundle, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
-    a.download = `einstein-studio-telemetry-${Date.now()}.json`;
+    a.href = url; a.download = `einstein-studio-telemetry-${Date.now()}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -324,15 +325,22 @@ const App: React.FC = () => {
       <div className="main-content">
         <section className="chat-sidebar">
           <div ref={chatContainerRef} className="flex-1 overflow-y-auto no-scrollbar scroll-smooth" style={{ padding: '2rem' }}>
+            {isLoading && <div style={{ textAlign: 'center', opacity: 0.6, fontSize: '10px', fontWeight: 900, padding: '1rem' }}>SOLVING FIELD EQUATIONS...</div>}
             {messages.map((msg, idx) => (
               <div key={idx} className="flex" style={{ justifyContent: msg.role === 'einstein' ? 'flex-start' : 'flex-end' }}>
-                <div className={`msg-container ${msg.role === 'einstein' ? 'bg-einstein' : 'bg-user'}`}>
+                <div 
+                  className={`msg-container ${msg.role === 'einstein' ? 'bg-einstein' : 'bg-user'} cursor-pointer`}
+                  onClick={() => msg.role === 'einstein' && playSpeech(msg.text, idx)}
+                >
                   <div className="serif" style={{ fontSize: '1.15rem', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{msg.text}</div>
+                  {msg.role === 'einstein' && (
+                    <div style={{ marginTop: '0.5rem', opacity: 0.4, fontSize: '9px', fontWeight: 900 }}>
+                      {currentlySpeakingId === idx && isAudioPlaying ? 'SPEAKING...' : 'CLICK TO HEAR'}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
-            {isLoading && <div style={{ textAlign: 'center', opacity: 0.6, fontSize: '10px', fontWeight: 900, padding: '1rem' }}>SOLVING FIELD EQUATIONS...</div>}
-            <div ref={chatEndRef} style={{ height: '1px' }} />
           </div>
         </section>
 
@@ -363,54 +371,22 @@ const App: React.FC = () => {
       <footer className="footer z-50">
         <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', display: 'flex', flexDirection: 'column' }}>
           <div className="flex gap-3" style={{ marginBottom: '1.25rem' }}>
-             <button 
-                onClick={() => handleAction(`Professor, manifest a diagram for: ${currentEra}.`)} 
-                disabled={isLoading}
-                style={{ padding: '0.6rem 1.4rem', borderRadius: '0.8rem', fontSize: '9px', fontWeight: 900 }}
-              >
-                SHOW DIAGRAM
-              </button>
-             
+             <button onClick={() => handleAction(`Professor, manifest a diagram for: ${currentEra}.`)} disabled={isLoading} style={{ padding: '0.6rem 1.4rem', borderRadius: '0.8rem', fontSize: '9px', fontWeight: 900 }}>SHOW DIAGRAM</button>
              <div className="relative" ref={faqDropdownRef}>
-                <button 
-                  onClick={() => !isLoading && setIsFaqOpen(!isFaqOpen)} 
-                  disabled={isLoading}
-                  style={{ padding: '0.6rem 1.4rem', borderRadius: '0.8rem', fontSize: '9px', fontWeight: 900 }}
-                >
-                  ARCHIVE {isFaqOpen ? '▴' : '▾'}
-                </button>
+                <button onClick={() => !isLoading && setIsFaqOpen(!isFaqOpen)} disabled={isLoading} style={{ padding: '0.6rem 1.4rem', borderRadius: '0.8rem', fontSize: '9px', fontWeight: 900 }}>ARCHIVE {isFaqOpen ? '▴' : '▾'}</button>
                 {isFaqOpen && (
                   <div className="absolute z-[100]" style={{ bottom: '100%', left: 0, marginBottom: '0.6rem', width: '220px', borderRadius: '1.25rem', padding: '0.5rem', background: 'var(--glass-bg)', border: '1px solid var(--border-color)', backdropFilter: 'blur(20px)' }}>
                     {['detail', 'applications', 'figures'].map(type => (
-                      <button key={type} onClick={() => handleFaqInquiry(type as any)} style={{ width: '100%', textAlign: 'left', padding: '0.7rem 1rem', fontSize: '9px', fontWeight: 800, border: 'none', background: 'transparent' }}>
-                        Archive: {type}
-                      </button>
+                      <button key={type} onClick={() => handleFaqInquiry(type as any)} style={{ width: '100%', textAlign: 'left', padding: '0.7rem 1rem', fontSize: '9px', fontWeight: 800, border: 'none', background: 'transparent' }}>Archive: {type}</button>
                     ))}
                   </div>
                 )}
              </div>
-
-             <button 
-                onClick={handleNextChapter} 
-                disabled={currentEra === Era.Unified || isLoading} 
-                style={{ padding: '0.6rem 1.4rem', borderRadius: '0.8rem', fontSize: '9px', fontWeight: 900 }}
-              >
-                NEXT CHAPTER
-              </button>
+             <button onClick={handleNextChapter} disabled={currentEra === Era.Unified || isLoading} style={{ padding: '0.6rem 1.4rem', borderRadius: '0.8rem', fontSize: '9px', fontWeight: 900 }}>NEXT CHAPTER</button>
           </div>
-          
           <form onSubmit={handleSendMessage} className="relative">
-            <input 
-              type="text" 
-              data-gramm-false="true"
-              value={userInput} 
-              onChange={(e) => setUserInput(e.target.value)} 
-              disabled={isLoading}
-              placeholder={isLoading ? "The Professor is thinking..." : "Query the Professor..."} 
-            />
-            <button type="submit" disabled={isLoading || !userInput.trim()} style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', backgroundColor: 'var(--accent)', color: '#fff', padding: '0.6rem 1.2rem', borderRadius: '1rem', fontWeight: 900, border: 'none' }}>
-              ANALYZE
-            </button>
+            <input type="text" data-gramm-false="true" value={userInput} onChange={(e) => setUserInput(e.target.value)} disabled={isLoading} placeholder={isLoading ? "The Professor is thinking..." : "Query the Professor..."} />
+            <button type="submit" disabled={isLoading || !userInput.trim()} style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', backgroundColor: 'var(--accent)', color: '#fff', padding: '0.6rem 1.2rem', borderRadius: '1rem', fontWeight: 900, border: 'none' }}>ANALYZE</button>
           </form>
         </div>
       </footer>
@@ -419,51 +395,20 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-[1000] flex flex-col items-center justify-start p-4 md:p-12 overflow-hidden" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)' }}>
           <div className="bg-theme border-theme flex flex-col shadow-2xl w-full h-full max-w-6xl animate-modal-in" style={{ borderRadius: '2.5rem', overflow: 'hidden', background: 'var(--glass-bg)', border: '1px solid var(--border-color)' }}>
             <div className="flex items-center justify-between p-8 border-b border-theme bg-opacity-50" style={{ background: 'rgba(0,0,0,0.1)' }}>
-              <div className="flex flex-col">
-                <h2 className="serif" style={{ fontSize: '1.75rem', fontWeight: 900, letterSpacing: '-0.02em' }}>Observer's Telemetry</h2>
-                <span style={{ fontSize: '12px', opacity: 0.5, fontWeight: 500, marginTop: '4px' }}>Technical execution and registry synchronization data.</span>
-              </div>
+              <div className="flex flex-col"><h2 className="serif" style={{ fontSize: '1.75rem', fontWeight: 900, letterSpacing: '-0.02em' }}>Observer's Telemetry</h2><span style={{ fontSize: '12px', opacity: 0.5, fontWeight: 500, marginTop: '4px' }}>Technical execution and registry synchronization data.</span></div>
               <div className="flex gap-4 items-center">
-                <button 
-                  onClick={handleExportForStudio} 
-                  style={{ padding: '0.7rem 1.2rem', borderRadius: '1rem', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', background: '#10b981', color: '#fff', border: 'none' }}
-                >
-                  EXPORT FOR STUDIO
-                </button>
-                <button 
-                  onClick={() => { clearPerformanceLogs(); setLogs([]); }} 
-                  style={{ padding: '0.7rem 1.2rem', borderRadius: '1rem', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase' }}
-                >
-                  RESET REGISTRY
-                </button>
-                <button 
-                  onClick={() => setIsLogOpen(false)} 
-                  style={{ width: '48px', height: '48px', borderRadius: '50%', fontSize: '18px', fontWeight: 900, border: 'none', background: 'var(--accent)', color: '#fff' }}
-                >
-                  ✕
-                </button>
+                <button onClick={handleExportForStudio} style={{ padding: '0.7rem 1.2rem', borderRadius: '1rem', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', background: '#10b981', color: '#fff', border: 'none' }}>EXPORT FOR STUDIO</button>
+                <button onClick={() => { clearPerformanceLogs(); setLogs([]); localStorage.clear(); }} style={{ padding: '0.7rem 1.2rem', borderRadius: '1rem', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase' }}>WIPE ALL</button>
+                <button onClick={() => setIsLogOpen(false)} style={{ width: '48px', height: '48px', borderRadius: '50%', fontSize: '18px', fontWeight: 900, border: 'none', background: 'var(--accent)', color: '#fff' }}>✕</button>
               </div>
             </div>
-            <div 
-              ref={logScrollRef}
-              className="flex-1 overflow-y-auto p-8 flex flex-col gap-6 font-mono no-scrollbar" 
-              style={{ scrollBehavior: 'smooth' }}
-            >
+            <div ref={logScrollRef} className="flex-1 overflow-y-auto p-8 flex flex-col gap-6 font-mono no-scrollbar" style={{ scrollBehavior: 'smooth' }}>
               {logs.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-32 opacity-20">
-                  <span style={{ fontSize: '64px', marginBottom: '2rem' }}>📡</span>
-                  <p style={{ fontWeight: 900, fontSize: '14px', letterSpacing: '0.2em' }}>NO TELEMETRY RECORDED</p>
-                </div>
+                <div className="flex flex-col items-center justify-center py-32 opacity-20"><span style={{ fontSize: '64px', marginBottom: '2rem' }}>📡</span><p style={{ fontWeight: 900, fontSize: '14px', letterSpacing: '0.2em' }}>NO TELEMETRY RECORDED</p></div>
               ) : (
                 logs.map(log => (
                   <div key={log.id} className="p-6 border-theme rounded-2xl transition-all hover:translate-x-1" style={{ backgroundColor: 'rgba(0,0,0,0.15)', borderLeft: `6px solid ${log.status === 'ERROR' ? '#ef4444' : log.status === 'CACHE_HIT' ? '#10b981' : 'var(--accent)'}` }}>
-                    <div className="flex justify-between items-start mb-3">
-                      <div className="flex items-center gap-3">
-                         <span style={{ fontSize: '11px', fontWeight: 900, color: 'var(--accent)', background: 'rgba(99, 102, 241, 0.1)', padding: '4px 10px', borderRadius: '6px' }}>{log.type}</span>
-                         <span style={{ fontSize: '11px', opacity: 0.4, fontWeight: 800 }}>{new Date(log.timestamp).toLocaleTimeString()}</span>
-                      </div>
-                      <span style={{ fontSize: '11px', opacity: 0.6, fontWeight: 900 }}>{Math.round(log.duration)}MS</span>
-                    </div>
+                    <div className="flex justify-between items-start mb-3"><div className="flex items-center gap-3"><span style={{ fontSize: '11px', fontWeight: 900, color: 'var(--accent)', background: 'rgba(99, 102, 241, 0.1)', padding: '4px 10px', borderRadius: '6px' }}>{log.type}</span><span style={{ fontSize: '11px', opacity: 0.4, fontWeight: 800 }}>{new Date(log.timestamp).toLocaleTimeString()}</span></div><span style={{ fontSize: '11px', opacity: 0.6, fontWeight: 900 }}>{Math.round(log.duration)}MS</span></div>
                     <div style={{ fontSize: '14px', fontWeight: 800, marginBottom: '6px', color: 'var(--text-color)' }}>{log.label}</div>
                     <div style={{ fontSize: '13px', opacity: 0.7, lineHeight: 1.5 }}>{log.message}</div>
                   </div>
