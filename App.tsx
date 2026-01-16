@@ -33,14 +33,24 @@ const App: React.FC = () => {
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const faqDropdownRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const currentChapter = useMemo(() => CHAPTERS.find(c => c.id === currentEra), [currentEra]);
 
-  const addSystemLog = (label: string, message: string, status: 'SUCCESS' | 'ERROR' | 'CACHE_HIT' = 'SUCCESS') => {
+  const addSystemLog = (label: string, message: string, status: 'SUCCESS' | 'ERROR' | 'CACHE_HIT' = 'SUCCESS', metadata?: any) => {
     window.dispatchEvent(new CustomEvent('performance_log_updated', {
-      detail: { type: 'SYSTEM', label, message, status, duration: 0 }
+      detail: { type: 'SYSTEM', label, message, status, duration: 0, metadata }
     }));
   };
+
+  // CLEANUP: Close AudioContext on unmount to prevent browser memory leaks
+  useEffect(() => {
+    return () => {
+      if (audioContextRef.current) {
+        audioContextRef.current.close().catch(console.error);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const updateLogs = () => setLogs([...getPerformanceLogs()]);
@@ -63,7 +73,6 @@ const App: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // SCROLL TO TOP: Keeps text at the top as requested
   useEffect(() => {
     if (messages.length > 0 && chatContainerRef.current) {
       chatContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
@@ -71,19 +80,22 @@ const App: React.FC = () => {
   }, [messages.length]);
 
   useEffect(() => {
-    if ((window as any).MathJax) {
-      (window as any).MathJax.typesetPromise?.().catch(() => null);
+    const mathJax = (window as any).MathJax;
+    if (mathJax && mathJax.typesetPromise) {
+      mathJax.typesetPromise().catch((err: any) => console.debug('MathJax error:', err));
     }
   }, [messages]);
 
   const stopAudio = useCallback((silent: boolean = false) => {
     if (audioSourceRef.current) {
       try {
-        const source = audioSourceRef.current;
-        source.onended = null;
-        source.stop();
-        if (!silent) addSystemLog('Vocal Interruption', 'Professor speaking halted.', 'SUCCESS');
-      } catch (e) {}
+        audioSourceRef.current.onended = null;
+        audioSourceRef.current.stop();
+        audioSourceRef.current.disconnect();
+        if (!silent) addSystemLog('Vocal Interruption', 'Playback halted.', 'SUCCESS');
+      } catch (e) {
+        console.debug('Audio stop failed:', e);
+      }
       audioSourceRef.current = null;
     }
     setIsAudioPlaying(false);
@@ -91,6 +103,7 @@ const App: React.FC = () => {
   }, []);
 
   const playSpeech = async (text: string, msgId: number) => {
+    if (isLoading || !text) return; 
     if (currentlySpeakingId === msgId && isAudioPlaying) {
       stopAudio();
       return;
@@ -102,13 +115,9 @@ const App: React.FC = () => {
       setCurrentlySpeakingId(msgId);
       
       const base64 = await generateEinsteinSpeech(text);
-      if (!base64) {
-        setIsAudioPlaying(false);
-        setCurrentlySpeakingId(null);
-        return;
-      }
+      if (!base64) throw new Error("No audio data generated.");
 
-      if (!audioContextRef.current) {
+      if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       }
       
@@ -130,33 +139,39 @@ const App: React.FC = () => {
            return prev;
         });
         audioSourceRef.current = null;
+        source.disconnect();
       };
       
       audioSourceRef.current = source;
       source.start();
     } catch (err: any) {
-      if (err.name !== 'Canceled') {
-        setIsAudioPlaying(false);
-        setCurrentlySpeakingId(null);
-        addSystemLog('Audio Fault', `Speech engine failed.`, 'ERROR');
-      }
+      setIsAudioPlaying(false);
+      setCurrentlySpeakingId(null);
+      addSystemLog('Audio Fault', `Synthesizer error: ${err.message}`, 'ERROR');
     }
   };
 
   const playLatestSpeech = () => {
-    let lastIdx = -1;
-    for (let i = 0; i < messages.length; i++) {
-      if (messages[i].role === 'einstein') {
-        lastIdx = i;
-        break;
-      }
+    if (isLoading) return;
+    const lastEinsteinMsg = messages.find(m => m.role === 'einstein');
+    if (lastEinsteinMsg) {
+      const idx = messages.indexOf(lastEinsteinMsg);
+      playSpeech(lastEinsteinMsg.text, idx);
     }
-    if (lastIdx !== -1) playSpeech(messages[lastIdx].text, lastIdx);
   };
 
   const handleAction = async (promptText: string, eraToSet?: Era, isNewEra: boolean = false) => {
+    if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setIsLoading(true);
-    if (isNewEra) stopAudio(true);
+    if (isNewEra) {
+      stopAudio(true);
+      setLastImage(null);
+    }
 
     const history = isNewEra ? [] : [...messages].reverse().map(m => ({
       role: m.role === 'einstein' ? 'model' : 'user',
@@ -165,11 +180,12 @@ const App: React.FC = () => {
 
     try {
       const responseText = await generateEinsteinResponse(promptText, history);
-      if (!responseText) return;
-
-      const imageMatch = responseText.match(/\[IMAGE: (.*?)\]/);
-      let cleanedText = responseText;
-      const newMessage: Message = { role: 'einstein', text: cleanedText, timestamp: Date.now() };
+      
+      if (controller.signal.aborted) return;
+      
+      const safeResponse = responseText || "Ach, ze field equations... zey are not converging.";
+      const imageMatch = safeResponse.match(/\[IMAGE: (.*?)\]/);
+      const newMessage: Message = { role: 'einstein', text: safeResponse, timestamp: Date.now() };
       
       if (isNewEra) {
         setMessages([newMessage]);
@@ -184,20 +200,42 @@ const App: React.FC = () => {
         setIsImageLoading(true);
         try {
           const imageUrl = await generateChalkboardImage(imagePrompt);
-          if (imageUrl) setLastImage(imageUrl);
+          if (!controller.signal.aborted && imageUrl) {
+            setLastImage(imageUrl);
+          }
         } catch (e: any) {
-          if (e.name !== 'Canceled') {
-             addSystemLog('Visual Error', `Chalkboard generation failed.`, 'ERROR');
+          if (!controller.signal.aborted) {
+            addSystemLog('Visual Fault', `Diagram failed: ${e.message}`, 'ERROR');
           }
         } finally {
-          setIsImageLoading(false);
+          if (!controller.signal.aborted) setIsImageLoading(false);
         }
       }
     } catch (err: any) {
-      if (err.name !== 'Canceled') {
-        addSystemLog('Synthesis Fault', `The model failed to converge.`, 'ERROR');
+      if (!controller.signal.aborted) {
+        addSystemLog('Critical Failure', `Synthesis loop crashed: ${err.message}`, 'ERROR');
+        const fallbackMsg: Message = { role: 'einstein', text: "Forgive me, my friend. Let us try again.", timestamp: Date.now() };
+        setMessages(prev => [fallbackMsg, ...prev]);
       }
     } finally {
+      if (!controller.signal.aborted) {
+        setIsLoading(false);
+      }
+    }
+  };
+
+  const startEra = (era: Era) => {
+    setIsDropdownOpen(false);
+    stopAudio(true);
+    
+    setMessages([]);
+    setLastImage(null);
+    setIsLoading(true);
+
+    const chapter = CHAPTERS.find(c => c.id === era);
+    if (chapter) {
+      handleAction(chapter.prompt, era, true);
+    } else {
       setIsLoading(false);
     }
   };
@@ -209,21 +247,11 @@ const App: React.FC = () => {
     switch(type) {
       case 'detail': inquiry = `Professor, explain the mathematics of ${currentEra} in deeper detail.`; break;
       case 'applications': inquiry = `Professor, how is the math from ${currentEra} used in modern science?`; break;
-      case 'figures': inquiry = `Professor, who were the influential figures or pioneers during the era of ${currentEra}?`; break;
+      case 'figures': inquiry = `Professor, who were the influential figures during the era of ${currentEra}?`; break;
     }
     const userMsg: Message = { role: 'user', text: inquiry, timestamp: Date.now() };
     setMessages(prev => [userMsg, ...prev]);
     handleAction(inquiry);
-  };
-
-  const startEra = (era: Era) => {
-    if (isLoading) return;
-    setIsDropdownOpen(false);
-    const chapter = CHAPTERS.find(c => c.id === era);
-    if (chapter) {
-      setMessages([]);
-      handleAction(chapter.prompt, era, true);
-    }
   };
 
   const handleNextChapter = () => {
@@ -234,11 +262,6 @@ const App: React.FC = () => {
     }
   };
 
-  const handleStartExperience = () => {
-    setHasStarted(true);
-    startEra(Era.Introduction);
-  };
-
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!userInput.trim() || isLoading) return;
@@ -247,20 +270,6 @@ const App: React.FC = () => {
     const input = userInput;
     setUserInput('');
     handleAction(input);
-  };
-
-  const handleExportForStudio = () => {
-    const diagnosticBundle = {
-      session: { timestamp: new Date().toISOString(), currentEra, messageCount: messages.length },
-      telemetry: logs.map(log => ({ ...log, studio_formatted_time: new Date(log.timestamp).toISOString() })),
-      context: messages.slice(0, 5)
-    };
-    const blob = new Blob([JSON.stringify(diagnosticBundle, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `einstein-studio-telemetry-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
   };
 
   const stars = useMemo(() => Array.from({ length: 100 }).map((_, i) => ({
@@ -286,7 +295,7 @@ const App: React.FC = () => {
             </div>
             <h1 className="serif" style={{ fontSize: '2.8rem', fontWeight: 900, marginBottom: '0.75rem', color: 'white' }}>Einstein's Universe</h1>
             <p className="serif" style={{ color: '#d1d1d6', fontStyle: 'italic', marginBottom: '3rem', fontSize: '1.1rem' }}>"Knowledge is limited, imagination encircles the world."</p>
-            <button onClick={handleStartExperience} style={{ width: '100%', padding: '1.25rem', backgroundColor: '#6366f1', color: '#fff', borderRadius: '1.5rem', fontWeight: 900 }}>ENTER LABORATORY</button>
+            <button onClick={() => { setHasStarted(true); startEra(Era.Introduction); }} style={{ width: '100%', padding: '1.25rem', backgroundColor: '#6366f1', color: '#fff', borderRadius: '1.5rem', fontWeight: 900 }}>ENTER LABORATORY</button>
           </div>
         </div>
       )}
@@ -298,11 +307,24 @@ const App: React.FC = () => {
         </div>
         <div className="flex items-center gap-3">
           <button onClick={() => setIsLogOpen(true)} style={{ padding: '0.6rem 1rem', borderRadius: '0.75rem', fontSize: '10px', fontWeight: 900 }}>LOG</button>
-          <button onClick={playLatestSpeech} style={{ padding: '0.6rem 1.25rem', borderRadius: '0.75rem', fontSize: '10px', fontWeight: 900, backgroundColor: isAudioPlaying ? '#ef4444' : 'var(--accent)', color: '#fff', border: 'none' }}>
+          <button 
+            onClick={playLatestSpeech} 
+            disabled={isLoading || messages.length === 0}
+            style={{ 
+              padding: '0.6rem 1.25rem', 
+              borderRadius: '0.75rem', 
+              fontSize: '10px', 
+              fontWeight: 900, 
+              backgroundColor: isAudioPlaying ? '#ef4444' : 'var(--accent)', 
+              color: '#fff', 
+              opacity: (isLoading || messages.length === 0) ? 0.5 : 1,
+              border: 'none' 
+            }}
+          >
             {isAudioPlaying ? 'MUTE' : 'LISTEN'}
           </button>
           <div className="relative" ref={dropdownRef}>
-            <button onClick={() => !isLoading && setIsDropdownOpen(!isDropdownOpen)} disabled={isLoading} style={{ padding: '0.6rem 1rem', borderRadius: '0.75rem', fontSize: '11px', fontWeight: 800, color: 'var(--accent)', minWidth: '160px' }}>
+            <button onClick={() => !isLoading && setIsDropdownOpen(!isDropdownOpen)} disabled={isLoading} style={{ padding: '0.6rem 1rem', borderRadius: '0.75rem', fontSize: '11px', fontWeight: 800, color: 'var(--accent)', minWidth: '160px', opacity: isLoading ? 0.7 : 1 }}>
               {currentChapter?.id}
             </button>
             {isDropdownOpen && (
@@ -322,19 +344,22 @@ const App: React.FC = () => {
       </header>
 
       <div className="main-content">
-        <section className="chat-sidebar">
+        <section className="chat-sidebar no-scrollbar">
           <div ref={chatContainerRef} className="flex-1 overflow-y-auto no-scrollbar scroll-smooth" style={{ padding: '2rem' }}>
-            {isLoading && <div style={{ textAlign: 'center', opacity: 0.6, fontSize: '10px', fontWeight: 900, padding: '1rem' }}>SOLVING FIELD EQUATIONS...</div>}
+            {isLoading && <div style={{ textAlign: 'center', opacity: 0.6, fontSize: '10px', fontWeight: 900, padding: '1rem', letterSpacing: '0.1em' }}>CONSULTING WORLD BRAIN...</div>}
+            {messages.length === 0 && !isLoading && (
+               <div style={{ textAlign: 'center', opacity: 0.3, marginTop: '4rem', fontSize: '12px', fontWeight: 800 }}>AWAITING OBSERVATION</div>
+            )}
             {messages.map((msg, idx) => (
               <div key={idx} className="flex" style={{ justifyContent: msg.role === 'einstein' ? 'flex-start' : 'flex-end' }}>
                 <div 
-                  className={`msg-container ${msg.role === 'einstein' ? 'bg-einstein' : 'bg-user'} cursor-pointer`}
-                  onClick={() => msg.role === 'einstein' && playSpeech(msg.text, idx)}
+                  className={`msg-container ${msg.role === 'einstein' ? 'bg-einstein' : 'bg-user'} ${isLoading ? '' : 'cursor-pointer'}`}
+                  onClick={() => !isLoading && msg.role === 'einstein' && playSpeech(msg.text, idx)}
                 >
                   <div className="serif" style={{ fontSize: '1.15rem', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{msg.text}</div>
                   {msg.role === 'einstein' && (
                     <div style={{ marginTop: '0.5rem', opacity: 0.4, fontSize: '9px', fontWeight: 900 }}>
-                      {currentlySpeakingId === idx && isAudioPlaying ? 'SPEAKING...' : 'CLICK TO HEAR'}
+                      {currentlySpeakingId === idx && isAudioPlaying ? 'SPEAKING...' : isLoading ? 'THINKING...' : 'CLICK TO HEAR'}
                     </div>
                   )}
                 </div>
@@ -359,8 +384,8 @@ const App: React.FC = () => {
                 style={{ width: '100%', height: '100%', objectFit: 'contain' }}
               />
             ) : (
-              <div style={{ opacity: 0.2, fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.5em' }}>
-                Awaiting Observation
+              <div style={{ opacity: 0.2, fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.5em', textAlign: 'center' }}>
+                {isImageLoading ? 'Active Observation...' : 'Awaiting Theory'}
               </div>
             )}
           </div>
@@ -370,9 +395,9 @@ const App: React.FC = () => {
       <footer className="footer z-50">
         <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', display: 'flex', flexDirection: 'column' }}>
           <div className="flex gap-3" style={{ marginBottom: '1.25rem' }}>
-             <button onClick={() => handleAction(`Professor, manifest a diagram for: ${currentEra}.`)} disabled={isLoading} style={{ padding: '0.6rem 1.4rem', borderRadius: '0.8rem', fontSize: '9px', fontWeight: 900 }}>SHOW DIAGRAM</button>
+             <button onClick={() => handleAction(`Professor, manifest a diagram for: ${currentEra}.`)} disabled={isLoading} style={{ padding: '0.6rem 1.4rem', borderRadius: '0.8rem', fontSize: '9px', fontWeight: 900, opacity: isLoading ? 0.5 : 1 }}>SHOW DIAGRAM</button>
              <div className="relative" ref={faqDropdownRef}>
-                <button onClick={() => !isLoading && setIsFaqOpen(!isFaqOpen)} disabled={isLoading} style={{ padding: '0.6rem 1.4rem', borderRadius: '0.8rem', fontSize: '9px', fontWeight: 900 }}>ARCHIVE {isFaqOpen ? '▴' : '▾'}</button>
+                <button onClick={() => !isLoading && setIsFaqOpen(!isFaqOpen)} disabled={isLoading} style={{ padding: '0.6rem 1.4rem', borderRadius: '0.8rem', fontSize: '9px', fontWeight: 900, opacity: isLoading ? 0.5 : 1 }}>ARCHIVE {isFaqOpen ? '▴' : '▾'}</button>
                 {isFaqOpen && (
                   <div className="absolute z-[100]" style={{ bottom: '100%', left: 0, marginBottom: '0.6rem', width: '220px', borderRadius: '1.25rem', padding: '0.5rem', background: 'var(--glass-bg)', border: '1px solid var(--border-color)', backdropFilter: 'blur(20px)' }}>
                     {['detail', 'applications', 'figures'].map(type => (
@@ -381,11 +406,11 @@ const App: React.FC = () => {
                   </div>
                 )}
              </div>
-             <button onClick={handleNextChapter} disabled={currentEra === Era.Unified || isLoading} style={{ padding: '0.6rem 1.4rem', borderRadius: '0.8rem', fontSize: '9px', fontWeight: 900 }}>NEXT CHAPTER</button>
+             <button onClick={handleNextChapter} disabled={currentEra === Era.Unified || isLoading} style={{ padding: '0.6rem 1.4rem', borderRadius: '0.8rem', fontSize: '9px', fontWeight: 900, opacity: (currentEra === Era.Unified || isLoading) ? 0.5 : 1 }}>NEXT CHAPTER</button>
           </div>
           <form onSubmit={handleSendMessage} className="relative">
-            <input type="text" data-gramm-false="true" value={userInput} onChange={(e) => setUserInput(e.target.value)} disabled={isLoading} placeholder={isLoading ? "The Professor is thinking..." : "Query the Professor..."} />
-            <button type="submit" disabled={isLoading || !userInput.trim()} style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', backgroundColor: 'var(--accent)', color: '#fff', padding: '0.6rem 1.2rem', borderRadius: '1rem', fontWeight: 900, border: 'none' }}>ANALYZE</button>
+            <input type="text" data-gramm-false="true" value={userInput} onChange={(e) => setUserInput(e.target.value)} disabled={isLoading} placeholder={isLoading ? "The Professor is deep in thought..." : "Query the Professor..."} />
+            <button type="submit" disabled={isLoading || !userInput.trim()} style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', backgroundColor: 'var(--accent)', color: '#fff', padding: '0.6rem 1.2rem', borderRadius: '1rem', fontWeight: 900, border: 'none', opacity: (isLoading || !userInput.trim()) ? 0.5 : 1 }}>ANALYZE</button>
           </form>
         </div>
       </footer>
@@ -394,12 +419,8 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-[1000] flex flex-col items-center justify-start p-4 md:p-12 overflow-hidden" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)' }}>
           <div className="bg-theme border-theme flex flex-col shadow-2xl w-full h-full max-w-6xl animate-modal-in" style={{ borderRadius: '2.5rem', overflow: 'hidden', background: 'var(--glass-bg)', border: '1px solid var(--border-color)' }}>
             <div className="flex items-center justify-between p-8 border-b border-theme bg-opacity-50" style={{ background: 'rgba(0,0,0,0.1)' }}>
-              <div className="flex flex-col"><h2 className="serif" style={{ fontSize: '1.75rem', fontWeight: 900, letterSpacing: '-0.02em' }}>Observer's Telemetry</h2><span style={{ fontSize: '12px', opacity: 0.5, fontWeight: 500, marginTop: '4px' }}>Technical execution and registry synchronization data.</span></div>
-              <div className="flex gap-4 items-center">
-                <button onClick={handleExportForStudio} style={{ padding: '0.7rem 1.2rem', borderRadius: '1rem', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', background: '#10b981', color: '#fff', border: 'none' }}>EXPORT FOR STUDIO</button>
-                <button onClick={() => { clearPerformanceLogs(); setLogs([]); localStorage.clear(); }} style={{ padding: '0.7rem 1.2rem', borderRadius: '1rem', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase' }}>WIPE ALL</button>
-                <button onClick={() => setIsLogOpen(false)} style={{ width: '48px', height: '48px', borderRadius: '50%', fontSize: '18px', fontWeight: 900, border: 'none', background: 'var(--accent)', color: '#fff' }}>✕</button>
-              </div>
+              <div className="flex flex-col"><h2 className="serif" style={{ fontSize: '1.75rem', fontWeight: 900, letterSpacing: '-0.02em' }}>Observer's Telemetry</h2><span style={{ fontSize: '12px', opacity: 0.5, fontWeight: 500, marginTop: '4px' }}>Technical and registry synchronization data.</span></div>
+              <button onClick={() => setIsLogOpen(false)} style={{ width: '48px', height: '48px', borderRadius: '50%', fontSize: '18px', fontWeight: 900, border: 'none', background: 'var(--accent)', color: '#fff' }}>✕</button>
             </div>
             <div ref={logScrollRef} className="flex-1 overflow-y-auto p-8 flex flex-col gap-6 font-mono no-scrollbar" style={{ scrollBehavior: 'smooth' }}>
               {logs.length === 0 ? (
@@ -410,6 +431,11 @@ const App: React.FC = () => {
                     <div className="flex justify-between items-start mb-3"><div className="flex items-center gap-3"><span style={{ fontSize: '11px', fontWeight: 900, color: 'var(--accent)', background: 'rgba(99, 102, 241, 0.1)', padding: '4px 10px', borderRadius: '6px' }}>{log.type}</span><span style={{ fontSize: '11px', opacity: 0.4, fontWeight: 800 }}>{new Date(log.timestamp).toLocaleTimeString()}</span></div><span style={{ fontSize: '11px', opacity: 0.6, fontWeight: 900 }}>{Math.round(log.duration)}MS</span></div>
                     <div style={{ fontSize: '14px', fontWeight: 800, marginBottom: '6px', color: 'var(--text-color)' }}>{log.label}</div>
                     <div style={{ fontSize: '13px', opacity: 0.7, lineHeight: 1.5 }}>{log.message}</div>
+                    {log.metadata && (
+                      <div className="mt-4 p-4 rounded-lg bg-black bg-opacity-30 text-xs overflow-x-auto">
+                        <pre style={{ color: '#fff' }}>{JSON.stringify(log.metadata, null, 2)}</pre>
+                      </div>
+                    )}
                   </div>
                 ))
               )}
