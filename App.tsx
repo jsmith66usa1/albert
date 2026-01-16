@@ -63,8 +63,7 @@ const App: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // SCROLL LOGIC: Scroll to the top when messages change (e.g. new era or new query)
-  // This is decoupled from any audio logic to ensure it doesn't cause clipping.
+  // SCROLL TO TOP: Keeps text at the top as requested
   useEffect(() => {
     if (messages.length > 0 && chatContainerRef.current) {
       chatContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
@@ -139,14 +138,14 @@ const App: React.FC = () => {
       if (err.name !== 'Canceled') {
         setIsAudioPlaying(false);
         setCurrentlySpeakingId(null);
-        addSystemLog('Audio Fault', `Speech engine failed: ${err.message}`, 'ERROR');
+        addSystemLog('Audio Fault', `Speech engine failed.`, 'ERROR');
       }
     }
   };
 
   const playLatestSpeech = () => {
     let lastIdx = -1;
-    for (let i = messages.length - 1; i >= 0; i--) {
+    for (let i = 0; i < messages.length; i++) {
       if (messages[i].role === 'einstein') {
         lastIdx = i;
         break;
@@ -159,7 +158,7 @@ const App: React.FC = () => {
     setIsLoading(true);
     if (isNewEra) stopAudio(true);
 
-    const history = isNewEra ? [] : messages.map(m => ({
+    const history = isNewEra ? [] : [...messages].reverse().map(m => ({
       role: m.role === 'einstein' ? 'model' : 'user',
       parts: [{ text: m.text }]
     }));
@@ -175,7 +174,7 @@ const App: React.FC = () => {
       if (isNewEra) {
         setMessages([newMessage]);
       } else {
-        setMessages(prev => [newMessage, ...prev]); // Prepend to keep latest at top
+        setMessages(prev => [newMessage, ...prev]);
       }
       
       if (eraToSet) setCurrentEra(eraToSet);
