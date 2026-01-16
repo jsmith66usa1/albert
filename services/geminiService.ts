@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Modality } from "@google/genai";
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getDatabase, ref, get, set } from "firebase/database";
@@ -15,7 +16,15 @@ const firebaseConfig = {
 
 let performanceLogs: LogEntry[] = [];
 export const getPerformanceLogs = () => performanceLogs;
-export const clearPerformanceLogs = () => { performanceLogs = []; };
+
+const getErrorLocation = (error: Error): string => {
+  if (!error.stack) return "unknown location";
+  const stackLines = error.stack.split('\n');
+  // Usually the second or third line contains the actual call site
+  const callerLine = stackLines[1] || stackLines[0];
+  const match = callerLine.match(/(?:at\s+)?(.*\.(?:ts|tsx|js|jsx):(\d+):(\d+))/);
+  return match ? `Line ${match[2]}:${match[3]} (${match[1]})` : callerLine.trim();
+};
 
 const addLog = (entry: Omit<LogEntry, 'id' | 'timestamp'>) => {
   const newLog: LogEntry = {
@@ -35,15 +44,21 @@ try {
   if (dbUrl) {
     db = getDatabase(app, dbUrl);
     addLog({ 
-      type: 'CACHE_DB', 
-      label: 'World Brain Online', 
+      type: 'SYSTEM', 
+      label: 'World Brain Registry', 
       duration: performance.now() - startDb, 
       status: 'SUCCESS', 
-      message: 'Permanent global registry connected and ready.' 
+      message: 'Global synchronization layer active.' 
     });
   }
 } catch (e: any) {
-  addLog({ type: 'ERROR', label: 'Registry Offline', duration: 0, status: 'ERROR', message: `Global sync unavailable: ${e.message}` });
+  addLog({ 
+    type: 'ERROR', 
+    label: 'Registry Link Severed', 
+    duration: 0, 
+    status: 'ERROR', 
+    message: `Offline mode: ${e.message} @ ${getErrorLocation(e)}` 
+  });
 }
 
 const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
@@ -69,7 +84,8 @@ async function getFromCache(category: string, key: string): Promise<any> {
           label: `GLOBAL REGISTRY HIT: ${category}`, 
           duration: performance.now() - start, 
           status: 'CACHE_HIT', 
-          message: `Shared knowledge retrieved from global brain.` 
+          message: `Shared knowledge retrieved.`,
+          metadata: { isGlobal: true, key }
         });
         localStorage.setItem(`discovery_v11_${category}_${key}`, val);
         return val;
@@ -84,7 +100,8 @@ async function getFromCache(category: string, key: string): Promise<any> {
         label: `LOCAL HIT: ${category}`, 
         duration: performance.now() - start, 
         status: 'CACHE_HIT', 
-        message: `Local asset found.` 
+        message: `Local node retrieval successful.`,
+        metadata: { isGlobal: false, key }
       });
       return local;
     }
@@ -94,7 +111,6 @@ async function getFromCache(category: string, key: string): Promise<any> {
 
 async function saveToCache(category: string, key: string, data: string): Promise<void> {
   if (!data || data.length < 5) return;
-  const start = performance.now();
   try {
     localStorage.setItem(`discovery_v11_${category}_${key}`, data);
   } catch (e) {}
@@ -102,40 +118,42 @@ async function saveToCache(category: string, key: string, data: string): Promise
     try {
       const dbRef = ref(db, `world_brain_v11/${category}/${key}`);
       await set(dbRef, data);
-      addLog({ 
-        type: 'CACHE_DB', 
-        label: `GLOBAL SYNC: ${category}`, 
-        duration: performance.now() - start, 
-        status: 'SUCCESS', 
-        message: `Knowledge synchronized to global brain.` 
-      });
     } catch (e) {}
   }
 }
 
 function mathPhoneticizer(text: string): string {
   return text
-    .replace(/\\frac\{(.*?)\}\{(.*?)\}/g, '$1 divided by $2')
+    .replace(/\\frac\{(.*?)\}\{(.*?)\}/g, '$1 over $2')
     .replace(/\\Delta/g, 'delta')
     .replace(/\\hbar/g, 'h-bar')
-    .replace(/\\geq/g, 'is greater than or equal to')
+    .replace(/\\geq/g, 'is greater or equal to')
+    .replace(/\\leq/g, 'is less or equal to')
     .replace(/\\pi/g, 'pi')
-    .replace(/\\int/g, 'the integral of')
+    .replace(/\\int/g, 'the integral')
+    .replace(/\\infty/g, 'infinity')
+    .replace(/\\mu/g, 'mew')
+    .replace(/\\nu/g, 'new')
+    .replace(/\\sigma/g, 'sigma')
+    .replace(/\\alpha/g, 'alpha')
+    .replace(/\\beta/g, 'beta')
+    .replace(/\\gamma/g, 'gamma')
     .replace(/\^2/g, ' squared')
+    .replace(/\^3/g, ' cubed')
     .replace(/\[IMAGE:.*?\]/g, '')
     .replace(/\$/g, '')
+    .replace(/\\/g, ' ')
+    .replace(/\{|\}/g, ' ')
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
-export async function generateEinsteinResponse(prompt: string, history: { role: string, parts: { text: string }[] }[], retryCount = 0): Promise<string> {
-  // Switched to Flash for better reliability with high-persona prompts
+export async function generateEinsteinResponse(prompt: string, history: { role: string, parts: { text: string }[] }[]): Promise<string> {
   const model = 'gemini-3-flash-preview';
-  const systemInstruction = "You are Professor Albert Einstein. Whimsical German accent. Use LaTeX. Always include one [IMAGE: description] in your reply.";
+  const systemInstruction = "You are Professor Albert Einstein. Whimsical German accent. Use LaTeX for equations. Always include exactly one [IMAGE: clear visual description] in your reply. Keep responses concise.";
   const config = { systemInstruction, temperature: 0.8 };
-  
   const cacheInput = JSON.stringify({ history, prompt, systemInstruction });
   const key = await generateCacheKey(cacheInput);
-  
   const cached = await getFromCache('responses', key);
   if (cached) return cached;
 
@@ -143,44 +161,23 @@ export async function generateEinsteinResponse(prompt: string, history: { role: 
   try {
     const ai = getAI();
     const contents = history.concat([{ role: 'user', parts: [{ text: prompt }] }]);
-    const result = await ai.models.generateContent({
-      model: model,
-      contents: contents,
-      config: config,
-    });
-    
+    const result = await ai.models.generateContent({ model, contents, config });
     const textResult = result.text;
-    if (textResult && textResult.trim().length > 0) {
+    if (textResult) {
       await saveToCache('responses', key, textResult);
-      addLog({ type: 'AI_TEXT', label: 'SYNTHESIS SUCCESS', duration: performance.now() - start, status: 'SUCCESS', message: 'New response synthesized.' });
+      addLog({ type: 'AI_TEXT', label: 'SYNTHESIS SUCCESS', duration: performance.now() - start, status: 'SUCCESS', message: 'Thought articulated.' });
       return textResult;
     }
-    
-    // Retry logic for empty responses
-    if (retryCount < 1) {
-      addLog({ type: 'SYSTEM', label: 'RECALIBRATING', duration: 0, status: 'SUCCESS', message: 'Empty response detected. Re-attempting with simpler prompt.' });
-      return generateEinsteinResponse(prompt + " (Please respond directly as Einstein)", history, retryCount + 1);
-    }
-    
-    throw new Error("Gemini returned empty text after retry.");
+    throw new Error("Empty response");
   } catch (e: any) {
-    const duration = performance.now() - start;
     addLog({ 
       type: 'ERROR', 
-      label: 'DEBUG_AI_STUDIO_TEXT', 
-      duration, 
+      label: 'SYNTHESIS FAULT', 
+      duration: 0, 
       status: 'ERROR', 
-      message: `Dialogue failed: ${e.message}`,
-      metadata: { 
-        model, 
-        prompt, 
-        history_length: history.length, 
-        config, 
-        error: e.toString(),
-        retry_attempt: retryCount
-      }
+      message: `${e.message} @ ${getErrorLocation(e)}` 
     });
-    return "Ach, my dear friend. Ze field equations are becoming quite stubborn. It seems my thoughts are wandering into ze void! Let us try to observe another angle of zis problem.";
+    return "Ach, ze universe is a bit cloudy today. Try asking again, my friend.";
   }
 }
 
@@ -188,82 +185,82 @@ export async function generateChalkboardImage(prompt: string): Promise<string> {
   const key = await generateCacheKey(prompt);
   const cached = await getFromCache('images', key);
   if (cached) return cached;
-
   const start = performance.now();
-  const model = 'gemini-2.5-flash-image';
-  const config = { imageConfig: { aspectRatio: "1:1" } };
   try {
     const ai = getAI();
     const result = await ai.models.generateContent({
-      model: model,
-      contents: [{ text: `Minimalist chalkboard diagram: ${prompt}. White chalk on black background. Scientific accuracy is key.` }],
-      config: config
+      model: 'gemini-2.5-flash-image',
+      contents: [{ text: `A physics chalkboard drawing with white chalk: ${prompt}. Artistic and minimalist.` }],
     });
-
     let imageData = "";
     if (result.candidates?.[0]?.content?.parts) {
       for (const part of result.candidates[0].content.parts) {
-        if (part.inlineData) {
-          imageData = `data:image/png;base64,${part.inlineData.data}`;
-          break;
-        }
+        if (part.inlineData) { imageData = `data:image/png;base64,${part.inlineData.data}`; break; }
       }
     }
-    if (imageData) {
-      await saveToCache('images', key, imageData);
-      addLog({ type: 'AI_IMAGE', label: 'IMAGE SUCCESS', duration: performance.now() - start, status: 'SUCCESS', message: 'Image manifested.' });
-      return imageData;
+    if (imageData) { 
+      await saveToCache('images', key, imageData); 
+      addLog({ type: 'AI_IMAGE', label: 'CHALK SKETCHED', duration: performance.now() - start, status: 'SUCCESS', message: 'Visual representation ready.' });
+      return imageData; 
     }
-    throw new Error("No inlineData found in response parts.");
+    throw new Error("No image data");
   } catch (e: any) {
     addLog({ 
       type: 'ERROR', 
-      label: 'DEBUG_AI_STUDIO_IMAGE', 
-      duration: performance.now() - start, 
+      label: 'IMAGE FAULT', 
+      duration: 0, 
       status: 'ERROR', 
-      message: `Manifestation failed: ${e.message}`,
-      metadata: { model, prompt, config, error: e.toString() }
+      message: `${e.message} @ ${getErrorLocation(e)}` 
     });
     throw e;
   }
 }
 
-export async function generateEinsteinSpeech(text: string): Promise<string> {
-  const optimizedSpeechText = mathPhoneticizer(text).substring(0, 900);
-  const key = await generateCacheKey(optimizedSpeechText);
+export async function generateEinsteinSpeech(text: string, retries = 2): Promise<string> {
+  const optimized = mathPhoneticizer(text).substring(0, 600);
+  if (!optimized) return "";
+
+  const key = await generateCacheKey(optimized);
   const cached = await getFromCache('audio', key);
   if (cached) return cached;
 
-  const start = performance.now();
-  const model = "gemini-2.5-flash-preview-tts";
-  try {
-    const ai = getAI();
-    const result = await ai.models.generateContent({
-      model: model,
-      contents: [{ parts: [{ text: `Read with accent: ${optimizedSpeechText}` }] }],
-      config: {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Charon' } } },
-      },
-    });
-    const base64 = result.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (base64) {
-      await saveToCache('audio', key, base64);
-      addLog({ type: 'AI_AUDIO', label: 'VOCAL SUCCESS', duration: performance.now() - start, status: 'SUCCESS', message: 'Vocal generated.' });
-      return base64;
+  const ai = getAI();
+  let lastError: any = null;
+
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const result = await ai.models.generateContent({
+        model: "gemini-2.5-flash-preview-tts",
+        contents: [{ parts: [{ text: optimized }] }],
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Charon' } } },
+        },
+      });
+      const base64 = result.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (base64) {
+        await saveToCache('audio', key, base64);
+        return base64;
+      }
+      throw new Error("Empty TTS data");
+    } catch (e: any) {
+      lastError = e;
+      if (i < retries) {
+        const delay = 500 * (i + 1);
+        addLog({ type: 'SYSTEM', label: 'RETRYING TTS', duration: 0, status: 'ERROR', message: `Attempt ${i+1} failed. @ ${getErrorLocation(e)}` });
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
     }
-    throw new Error("TTS candidate had no audio data.");
-  } catch (e: any) {
-    addLog({ 
-      type: 'ERROR', 
-      label: 'DEBUG_AI_STUDIO_AUDIO', 
-      duration: performance.now() - start, 
-      status: 'ERROR', 
-      message: `Vocal failed: ${e.message}`,
-      metadata: { model, text_sample: optimizedSpeechText.substring(0, 40), error: e.toString() }
-    });
-    throw e;
   }
+
+  addLog({ 
+    type: 'ERROR', 
+    label: 'VOCAL FAULT', 
+    duration: 0, 
+    status: 'ERROR', 
+    message: `${lastError?.message || "Internal error"} @ ${getErrorLocation(lastError)}` 
+  });
+  throw lastError;
 }
 
 export const decode = (base64: string) => {

@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Era, Message, Chapter, LogEntry } from './types';
+import { Era, Message, LogEntry } from './types';
 import { CHAPTERS } from './constants';
 import { 
   generateEinsteinResponse, 
@@ -7,8 +8,7 @@ import {
   generateEinsteinSpeech,
   decode,
   decodeAudioData,
-  getPerformanceLogs,
-  clearPerformanceLogs
+  getPerformanceLogs
 } from './services/geminiService';
 
 const App: React.FC = () => {
@@ -18,45 +18,91 @@ const App: React.FC = () => {
   const [isImageLoading, setIsImageLoading] = useState(false);
   const [userInput, setUserInput] = useState('');
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+  const [isSpeechLoading, setIsSpeechLoading] = useState(false);
   const [lastImage, setLastImage] = useState<string | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isFaqOpen, setIsFaqOpen] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
   const [currentlySpeakingId, setCurrentlySpeakingId] = useState<number | null>(null);
-  const [isFaqOpen, setIsFaqOpen] = useState(false);
   const [isLogOpen, setIsLogOpen] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   
-  const chatContainerRef = useRef<HTMLDivElement>(null);
-  const logScrollRef = useRef<HTMLDivElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const faqDropdownRef = useRef<HTMLDivElement>(null);
+  const activeSources = useRef<AudioBufferSourceNode[]>([]);
+  const speechSessionId = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
+  
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const faqRef = useRef<HTMLDivElement>(null);
 
-  const currentChapter = useMemo(() => CHAPTERS.find(c => c.id === currentEra), [currentEra]);
+  const eraArchiveItems = useMemo(() => {
+    const defaultItems = [
+      { label: "Modern Applications", prompt: `Professor, how does ${currentEra} apply to our world today?` },
+      { label: "Historical Rivals", prompt: `Who were the other great minds debating these ideas during the era of ${currentEra}?` }
+    ];
 
-  const addSystemLog = (label: string, message: string, status: 'SUCCESS' | 'ERROR' | 'CACHE_HIT' = 'SUCCESS', metadata?: any) => {
-    window.dispatchEvent(new CustomEvent('performance_log_updated', {
-      detail: { type: 'SYSTEM', label, message, status, duration: 0, metadata }
-    }));
-  };
-
-  // CLEANUP: Close AudioContext on unmount to prevent browser memory leaks
-  useEffect(() => {
-    return () => {
-      if (audioContextRef.current) {
-        audioContextRef.current.close().catch(console.error);
-      }
-    };
-  }, []);
+    switch (currentEra) {
+      case Era.Foundations:
+        return [
+          { label: "Diagram: Egyptian Ropes", prompt: "Show me a detailed diagram of how 'Rope Stretchers' used 3-4-5 knots to create right angles in Egypt." },
+          { label: "The Rhind Papyrus", prompt: "Tell me about the mathematical secrets of the Rhind Papyrus and the figure Ahmes." },
+          ...defaultItems
+        ];
+      case Era.Zero:
+        return [
+          { label: "Diagram: Zero Evolution", prompt: "Draw a diagram showing the visual evolution of the zero symbol from a dot to a circle." },
+          { label: "Brahmagupta's Wisdom", prompt: "What were the specific rules for the 'void' set by the great Indian mathematician Brahmagupta?" },
+          ...defaultItems
+        ];
+      case Era.Geometry:
+        return [
+          { label: "Diagram: Euclid's Proof", prompt: "Show me a visual proof diagram of the Pythagorean theorem as Euclid would have drawn it." },
+          { label: "Euclid of Alexandria", prompt: "Tell me about Euclid and why his 'Elements' is the most successful textbook in history." },
+          ...defaultItems
+        ];
+      case Era.Algebra:
+        return [
+          { label: "Diagram: Al-Jabr", prompt: "Draw a diagram of 'completing the square' as a geometric puzzle, the way Al-Khwarizmi did." },
+          { label: "Al-Khwarizmi", prompt: "Tell me about the House of Wisdom in Baghdad and the birth of Algebra." },
+          ...defaultItems
+        ];
+      case Era.Calculus:
+        return [
+          { label: "Diagram: Newton's Fluxion", prompt: "Sketch a diagram of an apple's path and the tangent line representing its instantaneous velocity." },
+          { label: "Leibniz & The Notation", prompt: "Tell me about Gottfried Wilhelm Leibniz and his beautiful 'd/dx' notation." },
+          ...defaultItems
+        ];
+      case Era.Quantum:
+        return [
+          { label: "Diagram: Atom Clouds", prompt: "Draw a diagram comparing the Bohr model of the atom to the modern probability cloud model." },
+          { label: "Niels Bohr", prompt: "Tell me about my friendly debates with Niels Bohr and the principle of complementarity." },
+          ...defaultItems
+        ];
+      case Era.Unified:
+        return [
+          { label: "Diagram: Spacetime Tapestry", prompt: "Draw a diagram of a heavy mass bending the fabric of spacetime into a funnel." },
+          { label: "The Search for Harmony", prompt: "Who are the modern physicists carrying on the search for the Unified Theory?" },
+          ...defaultItems
+        ];
+      default:
+        return defaultItems;
+    }
+  }, [currentEra]);
 
   useEffect(() => {
     const updateLogs = () => setLogs([...getPerformanceLogs()]);
     window.addEventListener('performance_log_updated', updateLogs);
-    updateLogs();
     return () => window.removeEventListener('performance_log_updated', updateLogs);
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) setIsDropdownOpen(false);
+      if (faqRef.current && !faqRef.current.contains(event.target as Node)) setIsFaqOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   useEffect(() => {
@@ -65,114 +111,88 @@ const App: React.FC = () => {
   }, [isDarkMode]);
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) setIsDropdownOpen(false);
-      if (faqDropdownRef.current && !faqDropdownRef.current.contains(event.target as Node)) setIsFaqOpen(false);
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  useEffect(() => {
-    if (messages.length > 0 && chatContainerRef.current) {
-      chatContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  }, [messages.length]);
-
-  useEffect(() => {
     const mathJax = (window as any).MathJax;
-    if (mathJax && mathJax.typesetPromise) {
-      mathJax.typesetPromise().catch((err: any) => console.debug('MathJax error:', err));
+    if (mathJax?.typesetPromise && messages.length > 0) {
+      setTimeout(() => mathJax.typesetPromise().catch(() => {}), 200);
     }
   }, [messages]);
 
-  const stopAudio = useCallback((silent: boolean = false) => {
-    if (audioSourceRef.current) {
-      try {
-        audioSourceRef.current.onended = null;
-        audioSourceRef.current.stop();
-        audioSourceRef.current.disconnect();
-        if (!silent) addSystemLog('Vocal Interruption', 'Playback halted.', 'SUCCESS');
-      } catch (e) {
-        console.debug('Audio stop failed:', e);
-      }
-      audioSourceRef.current = null;
-    }
+  const stopAudio = useCallback(() => {
+    speechSessionId.current++;
+    activeSources.current.forEach(s => { try { s.stop(); s.disconnect(); } catch (e) {} });
+    activeSources.current = [];
     setIsAudioPlaying(false);
+    setIsSpeechLoading(false);
     setCurrentlySpeakingId(null);
   }, []);
 
-  const playSpeech = async (text: string, msgId: number) => {
-    if (isLoading || !text) return; 
-    if (currentlySpeakingId === msgId && isAudioPlaying) {
+  const playChunkedSpeech = async (text: string, msgId: number) => {
+    if (currentlySpeakingId === msgId && (isAudioPlaying || isSpeechLoading)) {
       stopAudio();
       return;
     }
 
-    try {
-      stopAudio(true); 
-      setIsAudioPlaying(true);
-      setCurrentlySpeakingId(msgId);
-      
-      const base64 = await generateEinsteinSpeech(text);
-      if (!base64) throw new Error("No audio data generated.");
+    stopAudio();
+    const thisSessionId = speechSessionId.current;
+    setIsSpeechLoading(true);
+    setCurrentlySpeakingId(msgId);
 
-      if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+    if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+    }
+    if (audioContextRef.current.state === 'suspended') await audioContextRef.current.resume();
+
+    const cleanText = text.replace(/\[IMAGE:.*?\]/g, '').trim();
+    const chunks = cleanText.split(/(?<=[.!?])\s+/).filter(c => c.trim().length > 2);
+    let nextStartTime = audioContextRef.current.currentTime + 0.1;
+    
+    const fetchPromises = chunks.map(chunk => generateEinsteinSpeech(chunk));
+
+    try {
+      for (let i = 0; i < chunks.length; i++) {
+        if (thisSessionId !== speechSessionId.current) return;
+        const base64 = await fetchPromises[i];
+        if (thisSessionId !== speechSessionId.current || !base64) continue;
+        const buffer = await decodeAudioData(decode(base64), audioContextRef.current, 24000, 1);
+        if (i === 0) {
+          setIsSpeechLoading(false);
+          setIsAudioPlaying(true);
+        }
+        const source = audioContextRef.current.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioContextRef.current.destination);
+        const startTime = Math.max(nextStartTime, audioContextRef.current.currentTime);
+        source.start(startTime);
+        nextStartTime = startTime + buffer.duration;
+        activeSources.current.push(source);
+        source.onended = () => {
+          if (thisSessionId !== speechSessionId.current) return;
+          activeSources.current = activeSources.current.filter(s => s !== source);
+          if (activeSources.current.length === 0 && i === chunks.length - 1) stopAudio();
+        };
       }
-      
-      if (audioContextRef.current.state === 'suspended') {
-        await audioContextRef.current.resume();
-      }
-      
-      const audioBuffer = await decodeAudioData(decode(base64), audioContextRef.current, 24000, 1);
-      const source = audioContextRef.current.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(audioContextRef.current.destination);
-      
-      source.onended = () => {
-        setCurrentlySpeakingId(prev => {
-           if (prev === msgId) {
-             setIsAudioPlaying(false);
-             return null;
-           }
-           return prev;
-        });
-        audioSourceRef.current = null;
-        source.disconnect();
-      };
-      
-      audioSourceRef.current = source;
-      source.start();
-    } catch (err: any) {
-      setIsAudioPlaying(false);
-      setCurrentlySpeakingId(null);
-      addSystemLog('Audio Fault', `Synthesizer error: ${err.message}`, 'ERROR');
+    } catch (e) {
+      if (thisSessionId === speechSessionId.current) stopAudio();
     }
   };
 
   const playLatestSpeech = () => {
-    if (isLoading) return;
     const lastEinsteinMsg = messages.find(m => m.role === 'einstein');
-    if (lastEinsteinMsg) {
-      const idx = messages.indexOf(lastEinsteinMsg);
-      playSpeech(lastEinsteinMsg.text, idx);
-    }
+    if (lastEinsteinMsg) playChunkedSpeech(lastEinsteinMsg.text, messages.indexOf(lastEinsteinMsg));
   };
 
   const handleAction = async (promptText: string, eraToSet?: Era, isNewEra: boolean = false) => {
-    if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-    }
+    if (isLoading) return; 
+    if (abortControllerRef.current) abortControllerRef.current.abort();
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
     setIsLoading(true);
-    if (isNewEra) {
-      stopAudio(true);
-      setLastImage(null);
-    }
+    setIsFaqOpen(false);
+    setIsDropdownOpen(false);
+    stopAudio();
 
+    if (isNewEra) setLastImage(null);
     const history = isNewEra ? [] : [...messages].reverse().map(m => ({
       role: m.role === 'einstein' ? 'model' : 'user',
       parts: [{ text: m.text }]
@@ -180,186 +200,96 @@ const App: React.FC = () => {
 
     try {
       const responseText = await generateEinsteinResponse(promptText, history);
-      
       if (controller.signal.aborted) return;
-      
-      const safeResponse = responseText || "Ach, ze field equations... zey are not converging.";
+      const safeResponse = responseText || "Ach, ze universe is shy today.";
       const imageMatch = safeResponse.match(/\[IMAGE: (.*?)\]/);
       const newMessage: Message = { role: 'einstein', text: safeResponse, timestamp: Date.now() };
-      
-      if (isNewEra) {
-        setMessages([newMessage]);
-      } else {
-        setMessages(prev => [newMessage, ...prev]);
-      }
-      
+      setMessages(prev => isNewEra ? [newMessage] : [newMessage, ...prev]);
       if (eraToSet) setCurrentEra(eraToSet);
 
       if (imageMatch) {
-        const imagePrompt = imageMatch[1];
         setIsImageLoading(true);
         try {
-          const imageUrl = await generateChalkboardImage(imagePrompt);
-          if (!controller.signal.aborted && imageUrl) {
-            setLastImage(imageUrl);
-          }
-        } catch (e: any) {
-          if (!controller.signal.aborted) {
-            addSystemLog('Visual Fault', `Diagram failed: ${e.message}`, 'ERROR');
-          }
-        } finally {
+          const imageUrl = await generateChalkboardImage(imageMatch[1]);
+          if (!controller.signal.aborted && imageUrl) setLastImage(imageUrl);
+        } catch (e) {} finally {
           if (!controller.signal.aborted) setIsImageLoading(false);
         }
       }
-    } catch (err: any) {
-      if (!controller.signal.aborted) {
-        addSystemLog('Critical Failure', `Synthesis loop crashed: ${err.message}`, 'ERROR');
-        const fallbackMsg: Message = { role: 'einstein', text: "Forgive me, my friend. Let us try again.", timestamp: Date.now() };
-        setMessages(prev => [fallbackMsg, ...prev]);
-      }
+    } catch (err) {
+      console.error(err);
     } finally {
-      if (!controller.signal.aborted) {
-        setIsLoading(false);
-      }
+      if (!controller.signal.aborted) setIsLoading(false);
     }
   };
 
   const startEra = (era: Era) => {
+    if (isLoading) return;
     setIsDropdownOpen(false);
-    stopAudio(true);
-    
     setMessages([]);
     setLastImage(null);
-    setIsLoading(true);
-
     const chapter = CHAPTERS.find(c => c.id === era);
-    if (chapter) {
-      handleAction(chapter.prompt, era, true);
-    } else {
-      setIsLoading(false);
-    }
+    if (chapter) handleAction(chapter.prompt, era, true);
   };
-
-  const handleFaqInquiry = (type: 'detail' | 'applications' | 'figures') => {
-    if (isLoading) return;
-    setIsFaqOpen(false);
-    let inquiry = "";
-    switch(type) {
-      case 'detail': inquiry = `Professor, explain the mathematics of ${currentEra} in deeper detail.`; break;
-      case 'applications': inquiry = `Professor, how is the math from ${currentEra} used in modern science?`; break;
-      case 'figures': inquiry = `Professor, who were the influential figures during the era of ${currentEra}?`; break;
-    }
-    const userMsg: Message = { role: 'user', text: inquiry, timestamp: Date.now() };
-    setMessages(prev => [userMsg, ...prev]);
-    handleAction(inquiry);
-  };
-
-  const handleNextChapter = () => {
-    if (isLoading) return;
-    const currentIndex = CHAPTERS.findIndex(c => c.id === currentEra);
-    if (currentIndex !== -1 && currentIndex < CHAPTERS.length - 1) {
-      startEra(CHAPTERS[currentIndex + 1].id);
-    }
-  };
-
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!userInput.trim() || isLoading) return;
-    const userMsg: Message = { role: 'user', text: userInput, timestamp: Date.now() };
-    setMessages(prev => [userMsg, ...prev]);
-    const input = userInput;
-    setUserInput('');
-    handleAction(input);
-  };
-
-  const stars = useMemo(() => Array.from({ length: 100 }).map((_, i) => ({
-    top: `${Math.random() * 100}%`,
-    left: `${Math.random() * 100}%`,
-    size: `${Math.random() * 2 + 0.5}px`,
-    duration: `${Math.random() * 5 + 3}s`,
-    delay: `${Math.random() * 5}s`
-  })), []);
 
   return (
-    <div className="flex flex-col h-full bg-theme text-theme">
+    <div className="flex flex-col h-full bg-theme text-theme" style={{ height: '100vh', width: '100vw' }}>
       {!hasStarted && (
-        <div className="flex-1 flex flex-col items-center justify-center p-6 relative" style={{ backgroundColor: '#09090b', color: '#fff', position: 'fixed', inset: 0, zIndex: 1000 }}>
-          <div className="absolute" style={{ inset: 0, overflow: 'hidden' }}>
-            {stars.map((star, i) => (
-              <div key={i} className="star" style={{ top: star.top, left: star.left, width: star.size, height: star.size, '--duration': star.duration, animationDelay: star.delay } as any} />
-            ))}
-          </div>
-          <div className="glass p-6 flex flex-col items-center text-center relative z-50 shadow-2xl" style={{ maxWidth: '500px', borderRadius: '4rem', padding: '3.5rem', border: '1px solid rgba(255,255,255,0.1)' }}>
-            <div style={{ marginBottom: '2.5rem', borderRadius: '2.5rem', overflow: 'hidden', border: '2px solid rgba(99, 102, 241, 0.4)', width: '180px', height: '180px' }}>
-              <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Albert_Einstein_Head.jpg/480px-Albert_Einstein_Head.jpg" alt="Einstein" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        <div className="welcome-screen">
+          <button className="welcome-btn" onClick={() => { setHasStarted(true); startEra(Era.Introduction); }}>
+            <div style={{ marginBottom: '2rem', width: '240px', height: '240px', borderRadius: '50%', overflow: 'hidden', border: '4px solid rgba(255,255,255,0.2)', boxShadow: '0 0 50px rgba(99, 102, 241, 0.3)' }}>
+              <img 
+                src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Albert_Einstein_Head.jpg/480px-Albert_Einstein_Head.jpg" 
+                alt="Albert Einstein"
+                style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'sepia(0.3) contrast(1.1)' }}
+              />
             </div>
-            <h1 className="serif" style={{ fontSize: '2.8rem', fontWeight: 900, marginBottom: '0.75rem', color: 'white' }}>Einstein's Universe</h1>
-            <p className="serif" style={{ color: '#d1d1d6', fontStyle: 'italic', marginBottom: '3rem', fontSize: '1.1rem' }}>"Knowledge is limited, imagination encircles the world."</p>
-            <button onClick={() => { setHasStarted(true); startEra(Era.Introduction); }} style={{ width: '100%', padding: '1.25rem', backgroundColor: '#6366f1', color: '#fff', borderRadius: '1.5rem', fontWeight: 900 }}>ENTER LABORATORY</button>
-          </div>
+            <h1 className="serif">Einstein's Universe</h1>
+            <p className="serif">"Imagination is more important than knowledge. For knowledge is limited, whereas imagination embraces the entire world."</p>
+            <div className="cta">Enter Laboratory</div>
+          </button>
         </div>
       )}
 
       <header className="header flex items-center justify-between z-50">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center justify-center" style={{ width: '36px', height: '36px', borderRadius: '10px', backgroundColor: 'var(--accent)', fontWeight: 900, color: '#fff' }}>AE</div>
-          <h1 className="serif lg-block hidden" style={{ fontSize: '1.3rem', fontWeight: 900 }}>Einstein's Universe</h1>
+        <div className="flex items-center gap-6">
+          <div className="flex items-center justify-center" style={{ width: '48px', height: '48px', borderRadius: '14px', backgroundColor: 'var(--accent)', fontWeight: 900, color: '#fff', fontSize: '1.2rem' }}>AE</div>
+          <h1 className="serif lg-block hidden" style={{ fontSize: '1.6rem', fontWeight: 900 }}>Einstein's Universe</h1>
         </div>
-        <div className="flex items-center gap-3">
-          <button onClick={() => setIsLogOpen(true)} style={{ padding: '0.6rem 1rem', borderRadius: '0.75rem', fontSize: '10px', fontWeight: 900 }}>LOG</button>
-          <button 
-            onClick={playLatestSpeech} 
-            disabled={isLoading || messages.length === 0}
-            style={{ 
-              padding: '0.6rem 1.25rem', 
-              borderRadius: '0.75rem', 
-              fontSize: '10px', 
-              fontWeight: 900, 
-              backgroundColor: isAudioPlaying ? '#ef4444' : 'var(--accent)', 
-              color: '#fff', 
-              opacity: (isLoading || messages.length === 0) ? 0.5 : 1,
-              border: 'none' 
-            }}
-          >
-            {isAudioPlaying ? 'MUTE' : 'LISTEN'}
+        <div className="flex items-center gap-4">
+          <button onClick={() => setIsLogOpen(true)} style={{ fontSize: '0.9rem' }}>LOGS</button>
+          <button onClick={playLatestSpeech} disabled={isLoading || messages.length === 0} style={{ minWidth: '130px', backgroundColor: (isAudioPlaying || isSpeechLoading) ? '#ef4444' : 'var(--accent)', color: '#fff', border: 'none', opacity: (isLoading || messages.length === 0) ? 0.5 : 1 }}>
+            {isSpeechLoading ? 'TUNING...' : isAudioPlaying ? 'STOP' : 'LISTEN'}
           </button>
           <div className="relative" ref={dropdownRef}>
-            <button onClick={() => !isLoading && setIsDropdownOpen(!isDropdownOpen)} disabled={isLoading} style={{ padding: '0.6rem 1rem', borderRadius: '0.75rem', fontSize: '11px', fontWeight: 800, color: 'var(--accent)', minWidth: '160px', opacity: isLoading ? 0.7 : 1 }}>
-              {currentChapter?.id}
+            <button onClick={() => !isLoading && setIsDropdownOpen(!isDropdownOpen)} disabled={isLoading} style={{ color: 'var(--accent)', minWidth: '180px', opacity: isLoading ? 0.6 : 1 }}>
+              {currentEra} ▾
             </button>
             {isDropdownOpen && (
-              <div className="absolute z-50" style={{ top: '100%', right: 0, marginTop: '0.5rem', width: '280px', borderRadius: '1.25rem', padding: '0.75rem 0', background: 'var(--glass-bg)', border: '1px solid var(--border-color)', backdropFilter: 'blur(20px)' }}>
+              <div className="absolute z-50" style={{ top: '100%', right: 0, marginTop: '0.75rem', width: '280px', borderRadius: '1.5rem', padding: '0.75rem 0', background: 'var(--glass-bg)', border: '1px solid var(--border-color)', backdropFilter: 'blur(30px)', boxShadow: '0 20px 50px rgba(0,0,0,0.3)' }}>
                 {CHAPTERS.map(ch => (
-                  <button key={ch.id} onClick={() => startEra(ch.id)} style={{ width: '100%', textAlign: 'left', padding: '0.6rem 1.5rem', fontSize: '10px', fontWeight: 800, color: currentEra === ch.id ? 'var(--accent)' : 'inherit', border: 'none', background: 'transparent' }}>
+                  <button key={ch.id} onClick={() => startEra(ch.id)} disabled={isLoading} style={{ width: '100%', textAlign: 'left', padding: '1rem 1.5rem', fontSize: '1.1rem', fontWeight: 800, color: currentEra === ch.id ? 'var(--accent)' : 'inherit', border: 'none', background: 'transparent', opacity: isLoading ? 0.5 : 1 }}>
                     {ch.id}
                   </button>
                 ))}
               </div>
             )}
           </div>
-          <button onClick={() => setIsDarkMode(!isDarkMode)} style={{ width: '42px', height: '42px', borderRadius: '0.75rem' }}>
-            {isDarkMode ? '☀️' : '🌙'}
-          </button>
+          <button onClick={() => setIsDarkMode(!isDarkMode)} style={{ width: '48px', height: '48px', padding: 0, fontSize: '1.4rem' }}>{isDarkMode ? '☀️' : '🌙'}</button>
         </div>
       </header>
 
       <div className="main-content">
         <section className="chat-sidebar no-scrollbar">
-          <div ref={chatContainerRef} className="flex-1 overflow-y-auto no-scrollbar scroll-smooth" style={{ padding: '2rem' }}>
-            {isLoading && <div style={{ textAlign: 'center', opacity: 0.6, fontSize: '10px', fontWeight: 900, padding: '1rem', letterSpacing: '0.1em' }}>CONSULTING WORLD BRAIN...</div>}
-            {messages.length === 0 && !isLoading && (
-               <div style={{ textAlign: 'center', opacity: 0.3, marginTop: '4rem', fontSize: '12px', fontWeight: 800 }}>AWAITING OBSERVATION</div>
-            )}
+          <div className="flex-1 overflow-y-auto no-scrollbar" style={{ padding: '2rem' }}>
+            {isLoading && <div style={{ textAlign: 'center', opacity: 0.6, fontSize: '1rem', fontWeight: 900, padding: '1.5rem' }}>CONSULTING RELATIVITY...</div>}
             {messages.map((msg, idx) => (
               <div key={idx} className="flex" style={{ justifyContent: msg.role === 'einstein' ? 'flex-start' : 'flex-end' }}>
-                <div 
-                  className={`msg-container ${msg.role === 'einstein' ? 'bg-einstein' : 'bg-user'} ${isLoading ? '' : 'cursor-pointer'}`}
-                  onClick={() => !isLoading && msg.role === 'einstein' && playSpeech(msg.text, idx)}
-                >
-                  <div className="serif" style={{ fontSize: '1.15rem', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{msg.text}</div>
+                <div className={`msg-container ${msg.role === 'einstein' ? 'bg-einstein' : 'bg-user'} cursor-pointer`} onClick={() => msg.role === 'einstein' && playChunkedSpeech(msg.text, idx)}>
+                  <div className="serif" style={{ fontSize: '1.25rem' }}>{msg.text}</div>
                   {msg.role === 'einstein' && (
-                    <div style={{ marginTop: '0.5rem', opacity: 0.4, fontSize: '9px', fontWeight: 900 }}>
-                      {currentlySpeakingId === idx && isAudioPlaying ? 'SPEAKING...' : isLoading ? 'THINKING...' : 'CLICK TO HEAR'}
+                    <div style={{ marginTop: '0.8rem', opacity: 0.5, fontSize: '0.85rem', fontWeight: 900, letterSpacing: '0.05em' }}>
+                      {currentlySpeakingId === idx && isSpeechLoading ? 'WARMING UP...' : currentlySpeakingId === idx && isAudioPlaying ? 'SPEAKING...' : 'TAP TO LISTEN'}
                     </div>
                   )}
                 </div>
@@ -367,89 +297,69 @@ const App: React.FC = () => {
             ))}
           </div>
         </section>
-
         <section className="chalkboard-area">
           <div className="flex flex-col items-center justify-center w-full h-full relative">
-            {isImageLoading && (
-              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black bg-opacity-40 backdrop-blur-sm rounded-3xl animate-pulse">
-                <span style={{ fontSize: '24px', marginBottom: '1rem' }}>✍️</span>
-                <p style={{ fontWeight: 900, fontSize: '11px', letterSpacing: '0.2em', color: '#fff' }}>MANIFESTING THEORY...</p>
-              </div>
-            )}
-            {lastImage ? (
-              <img 
-                src={lastImage} 
-                className={`chalkboard-filter transition-opacity duration-700 ${isImageLoading ? 'opacity-30' : 'opacity-100'}`} 
-                alt="Manifested Theory" 
-                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-              />
-            ) : (
-              <div style={{ opacity: 0.2, fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.5em', textAlign: 'center' }}>
-                {isImageLoading ? 'Active Observation...' : 'Awaiting Theory'}
-              </div>
-            )}
+            {isImageLoading && <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/40 rounded-[2.5rem] animate-pulse"><p style={{ fontWeight: 900, fontSize: '1.2rem', color: '#fff' }}>SKETCHING...</p></div>}
+            {lastImage ? <img src={lastImage} className="chalkboard-filter" alt="Theory" /> : <div style={{ opacity: 0.15, fontWeight: 900, fontSize: '1.3rem', letterSpacing: '0.2em' }}>AWAITING OBSERVATION</div>}
           </div>
         </section>
       </div>
 
       <footer className="footer z-50">
         <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', display: 'flex', flexDirection: 'column' }}>
-          <div className="flex gap-3" style={{ marginBottom: '1.25rem' }}>
-             <button onClick={() => handleAction(`Professor, manifest a diagram for: ${currentEra}.`)} disabled={isLoading} style={{ padding: '0.6rem 1.4rem', borderRadius: '0.8rem', fontSize: '9px', fontWeight: 900, opacity: isLoading ? 0.5 : 1 }}>SHOW DIAGRAM</button>
-             <div className="relative" ref={faqDropdownRef}>
-                <button onClick={() => !isLoading && setIsFaqOpen(!isFaqOpen)} disabled={isLoading} style={{ padding: '0.6rem 1.4rem', borderRadius: '0.8rem', fontSize: '9px', fontWeight: 900, opacity: isLoading ? 0.5 : 1 }}>ARCHIVE {isFaqOpen ? '▴' : '▾'}</button>
+          <div className="flex gap-4" style={{ marginBottom: '1rem' }}>
+             <button onClick={() => handleAction(`Professor, show me more math for ${currentEra}.`)} disabled={isLoading} style={{ opacity: isLoading ? 0.6 : 1 }}>
+               DEEPER MATHEMATICS
+             </button>
+             <div className="relative" ref={faqRef}>
+                <button onClick={() => !isLoading && setIsFaqOpen(!isFaqOpen)} disabled={isLoading} style={{ color: 'var(--accent)', opacity: isLoading ? 0.6 : 1, minWidth: '150px' }}>
+                  ARCHIVE ▾
+                </button>
                 {isFaqOpen && (
-                  <div className="absolute z-[100]" style={{ bottom: '100%', left: 0, marginBottom: '0.6rem', width: '220px', borderRadius: '1.25rem', padding: '0.5rem', background: 'var(--glass-bg)', border: '1px solid var(--border-color)', backdropFilter: 'blur(20px)' }}>
-                    {['detail', 'applications', 'figures'].map(type => (
-                      <button key={type} onClick={() => handleFaqInquiry(type as any)} style={{ width: '100%', textAlign: 'left', padding: '0.7rem 1rem', fontSize: '9px', fontWeight: 800, border: 'none', background: 'transparent' }}>Archive: {type}</button>
+                  <div className="absolute z-50" style={{ bottom: '100%', left: 0, marginBottom: '0.75rem', width: '350px', borderRadius: '1.5rem', padding: '0.75rem 0', background: 'var(--glass-bg)', border: '1px solid var(--border-color)', backdropFilter: 'blur(30px)', boxShadow: '0 -20px 50px rgba(0,0,0,0.3)' }}>
+                    <div style={{ padding: '0.5rem 1.5rem', fontSize: '0.75rem', fontWeight: 900, opacity: 0.5, textTransform: 'uppercase', letterSpacing: '0.15em', borderBottom: '1px solid var(--border-color)', marginBottom: '0.5rem' }}>Archive: {currentEra}</div>
+                    {eraArchiveItems.map((item, i) => (
+                      <button key={i} onClick={() => handleAction(item.prompt)} disabled={isLoading} style={{ width: '100%', textAlign: 'left', padding: '0.8rem 1.5rem', fontSize: '0.95rem', fontWeight: 800, border: 'none', background: 'transparent', transition: 'all 0.2s', opacity: isLoading ? 0.5 : 1 }} className="hover:bg-accent hover:text-white">
+                        {item.label}
+                      </button>
                     ))}
                   </div>
                 )}
              </div>
-             <button onClick={handleNextChapter} disabled={currentEra === Era.Unified || isLoading} style={{ padding: '0.6rem 1.4rem', borderRadius: '0.8rem', fontSize: '9px', fontWeight: 900, opacity: (currentEra === Era.Unified || isLoading) ? 0.5 : 1 }}>NEXT CHAPTER</button>
+             <button onClick={() => { const currentIndex = CHAPTERS.findIndex(c => c.id === currentEra); if (currentIndex < CHAPTERS.length - 1) startEra(CHAPTERS[currentIndex+1].id); }} disabled={currentEra === Era.Unified || isLoading} style={{ opacity: (currentEra === Era.Unified || isLoading) ? 0.5 : 1 }}>
+               NEXT ERA
+             </button>
           </div>
-          <form onSubmit={handleSendMessage} className="relative">
-            <input type="text" data-gramm-false="true" value={userInput} onChange={(e) => setUserInput(e.target.value)} disabled={isLoading} placeholder={isLoading ? "The Professor is deep in thought..." : "Query the Professor..."} />
-            <button type="submit" disabled={isLoading || !userInput.trim()} style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', backgroundColor: 'var(--accent)', color: '#fff', padding: '0.6rem 1.2rem', borderRadius: '1rem', fontWeight: 900, border: 'none', opacity: (isLoading || !userInput.trim()) ? 0.5 : 1 }}>ANALYZE</button>
+          <form onSubmit={(e) => { e.preventDefault(); if (userInput.trim() && !isLoading) { handleAction(userInput); setUserInput(''); } }} className="relative flex w-full">
+            <input type="text" value={userInput} onChange={(e) => setUserInput(e.target.value)} disabled={isLoading} placeholder={isLoading ? "The Professor is deep in thought..." : "Ask the Professor anything..." } style={{ paddingRight: '120px' }} />
+            <button type="submit" disabled={isLoading || !userInput.trim()} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', backgroundColor: 'var(--accent)', color: '#fff', borderRadius: '1.2rem', fontWeight: 900, border: 'none', padding: '0.75rem 1.5rem', opacity: (isLoading || !userInput.trim()) ? 0.6 : 1 }}>SEND</button>
           </form>
         </div>
       </footer>
 
       {isLogOpen && (
-        <div className="fixed inset-0 z-[1000] flex flex-col items-center justify-start p-4 md:p-12 overflow-hidden" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)' }}>
-          <div className="bg-theme border-theme flex flex-col shadow-2xl w-full h-full max-w-6xl animate-modal-in" style={{ borderRadius: '2.5rem', overflow: 'hidden', background: 'var(--glass-bg)', border: '1px solid var(--border-color)' }}>
-            <div className="flex items-center justify-between p-8 border-b border-theme bg-opacity-50" style={{ background: 'rgba(0,0,0,0.1)' }}>
-              <div className="flex flex-col"><h2 className="serif" style={{ fontSize: '1.75rem', fontWeight: 900, letterSpacing: '-0.02em' }}>Observer's Telemetry</h2><span style={{ fontSize: '12px', opacity: 0.5, fontWeight: 500, marginTop: '4px' }}>Technical and registry synchronization data.</span></div>
-              <button onClick={() => setIsLogOpen(false)} style={{ width: '48px', height: '48px', borderRadius: '50%', fontSize: '18px', fontWeight: 900, border: 'none', background: 'var(--accent)', color: '#fff' }}>✕</button>
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md">
+          <div className="bg-theme w-full max-w-4xl h-3/4 rounded-[2rem] flex flex-col overflow-hidden border border-white/10" style={{ background: 'var(--glass-bg)' }}>
+            <div className="p-8 flex justify-between items-center border-b border-white/5">
+              <h2 className="serif" style={{ fontSize: '1.8rem', fontWeight: 900 }}>Telemetry</h2>
+              <button onClick={() => setIsLogOpen(false)} style={{ borderRadius: '50%', width: '40px', height: '40px', padding: 0 }}>✕</button>
             </div>
-            <div ref={logScrollRef} className="flex-1 overflow-y-auto p-8 flex flex-col gap-6 font-mono no-scrollbar" style={{ scrollBehavior: 'smooth' }}>
-              {logs.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-32 opacity-20"><span style={{ fontSize: '64px', marginBottom: '2rem' }}>📡</span><p style={{ fontWeight: 900, fontSize: '14px', letterSpacing: '0.2em' }}>NO TELEMETRY RECORDED</p></div>
-              ) : (
-                logs.map(log => (
-                  <div key={log.id} className="p-6 border-theme rounded-2xl transition-all hover:translate-x-1" style={{ backgroundColor: 'rgba(0,0,0,0.15)', borderLeft: `6px solid ${log.status === 'ERROR' ? '#ef4444' : log.status === 'CACHE_HIT' ? '#10b981' : 'var(--accent)'}` }}>
-                    <div className="flex justify-between items-start mb-3"><div className="flex items-center gap-3"><span style={{ fontSize: '11px', fontWeight: 900, color: 'var(--accent)', background: 'rgba(99, 102, 241, 0.1)', padding: '4px 10px', borderRadius: '6px' }}>{log.type}</span><span style={{ fontSize: '11px', opacity: 0.4, fontWeight: 800 }}>{new Date(log.timestamp).toLocaleTimeString()}</span></div><span style={{ fontSize: '11px', opacity: 0.6, fontWeight: 900 }}>{Math.round(log.duration)}MS</span></div>
-                    <div style={{ fontSize: '14px', fontWeight: 800, marginBottom: '6px', color: 'var(--text-color)' }}>{log.label}</div>
-                    <div style={{ fontSize: '13px', opacity: 0.7, lineHeight: 1.5 }}>{log.message}</div>
-                    {log.metadata && (
-                      <div className="mt-4 p-4 rounded-lg bg-black bg-opacity-30 text-xs overflow-x-auto">
-                        <pre style={{ color: '#fff' }}>{JSON.stringify(log.metadata, null, 2)}</pre>
-                      </div>
-                    )}
+            <div className="flex-1 overflow-y-auto p-8 font-mono text-[0.9rem] space-y-6 no-scrollbar">
+              {logs.length === 0 && <div className="text-center opacity-30 mt-20">NO SYSTEM DATA RECORDED</div>}
+              {logs.map(log => (
+                <div key={log.id} className={`p-5 rounded-xl border-l-8 ${log.status === 'ERROR' ? 'border-red-500 bg-red-500/10' : 'border-accent bg-white/5'}`}>
+                  <div className="flex justify-between font-black uppercase text-[0.75rem] opacity-60 mb-2">
+                    <span>{log.type}</span>
+                    <span>{Math.round(log.duration)}MS</span>
                   </div>
-                ))
-              )}
+                  <div className="font-bold text-lg mb-1">{log.label}</div>
+                  <div className="opacity-70 leading-relaxed font-mono whitespace-pre-wrap">{log.message}</div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
       )}
-      <style>{`
-        @keyframes modal-in {
-          from { opacity: 0; transform: translateY(-40px) scale(0.98); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        .animate-modal-in { animation: modal-in 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
-      `}</style>
     </div>
   );
 };
