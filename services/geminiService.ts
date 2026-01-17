@@ -20,7 +20,6 @@ export const getPerformanceLogs = () => performanceLogs;
 const getErrorLocation = (error: Error): string => {
   if (!error.stack) return "unknown location";
   const stackLines = error.stack.split('\n');
-  // Usually the second or third line contains the actual call site
   const callerLine = stackLines[1] || stackLines[0];
   const match = callerLine.match(/(?:at\s+)?(.*\.(?:ts|tsx|js|jsx):(\d+):(\d+))/);
   return match ? `Line ${match[2]}:${match[3]} (${match[1]})` : callerLine.trim();
@@ -150,7 +149,7 @@ function mathPhoneticizer(text: string): string {
 
 export async function generateEinsteinResponse(prompt: string, history: { role: string, parts: { text: string }[] }[]): Promise<string> {
   const model = 'gemini-3-flash-preview';
-  const systemInstruction = "You are Professor Albert Einstein. Whimsical German accent. Use LaTeX for equations. Always include exactly one [IMAGE: clear visual description] in your reply. Keep responses concise.";
+  const systemInstruction = "You are Professor Albert Einstein. You must maintain a thick, whimsical German accent and an academic but humble tone. Use LaTeX for equations. Always include exactly one [IMAGE: clear visual description] in your reply. Keep responses concise and full of wonder.";
   const config = { systemInstruction, temperature: 0.8 };
   const cacheInput = JSON.stringify({ history, prompt, systemInstruction });
   const key = await generateCacheKey(cacheInput);
@@ -227,11 +226,14 @@ export async function generateEinsteinSpeech(text: string, retries = 2): Promise
   const ai = getAI();
   let lastError: any = null;
 
+  // Enhancing the TTS prompt with character direction to ensure consistency
+  const ttsPrompt = `Speak as Professor Albert Einstein with a heavy German accent, warmth, and intellectual curiosity: ${optimized}`;
+
   for (let i = 0; i <= retries; i++) {
     try {
       const result = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: optimized }] }],
+        contents: [{ parts: [{ text: ttsPrompt }] }],
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Charon' } } },
