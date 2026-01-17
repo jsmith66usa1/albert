@@ -259,7 +259,7 @@ const App: React.FC = () => {
         <div className="flex items-center gap-4">
           <button onClick={() => setIsLogOpen(true)} style={{ fontSize: '0.9rem' }}>LOGS</button>
           <button onClick={playLatestSpeech} disabled={isLoading || messages.length === 0} style={{ minWidth: '130px', backgroundColor: (isAudioPlaying || isSpeechLoading) ? '#ef4444' : 'var(--accent)', color: '#fff', border: 'none', opacity: (isLoading || messages.length === 0) ? 0.5 : 1 }}>
-            {isSpeechLoading ? 'TUNING...' : isAudioPlaying ? 'STOP' : 'LISTEN'}
+            {isSpeechLoading ? 'LOADING...' : isAudioPlaying ? 'STOP' : 'LISTEN'}
           </button>
           <div className="relative" ref={dropdownRef}>
             <button onClick={() => !isLoading && setIsDropdownOpen(!isDropdownOpen)} disabled={isLoading} style={{ color: 'var(--accent)', minWidth: '180px', opacity: isLoading ? 0.6 : 1 }}>
@@ -289,7 +289,7 @@ const App: React.FC = () => {
                   <div className="serif" style={{ fontSize: '1.25rem' }}>{msg.text}</div>
                   {msg.role === 'einstein' && (
                     <div style={{ marginTop: '0.8rem', opacity: 0.5, fontSize: '0.85rem', fontWeight: 900, letterSpacing: '0.05em' }}>
-                      {currentlySpeakingId === idx && isSpeechLoading ? 'WARMING UP...' : currentlySpeakingId === idx && isAudioPlaying ? 'SPEAKING...' : 'TAP TO LISTEN'}
+                      {currentlySpeakingId === idx && isSpeechLoading ? 'LOADING...' : currentlySpeakingId === idx && isAudioPlaying ? 'SPEAKING...' : 'TAP TO LISTEN'}
                     </div>
                   )}
                 </div>
