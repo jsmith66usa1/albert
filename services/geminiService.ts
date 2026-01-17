@@ -215,8 +215,8 @@ export async function generateChalkboardImage(prompt: string): Promise<string> {
   }
 }
 
-export async function generateEinsteinSpeech(text: string, retries = 2): Promise<string> {
-  const optimized = mathPhoneticizer(text).substring(0, 600);
+export async function generateEinsteinSpeech(text: string, retries = 1): Promise<string> {
+  const optimized = mathPhoneticizer(text).substring(0, 500);
   if (!optimized) return "";
 
   const key = await generateCacheKey(optimized);
@@ -225,9 +225,7 @@ export async function generateEinsteinSpeech(text: string, retries = 2): Promise
 
   const ai = getAI();
   let lastError: any = null;
-
-  // Enhancing the TTS prompt with character direction to ensure consistency
-  const ttsPrompt = `Speak as Professor Albert Einstein with a heavy German accent, warmth, and intellectual curiosity: ${optimized}`;
+  const ttsPrompt = `Speak as Professor Albert Einstein with a heavy German accent: ${optimized}`;
 
   for (let i = 0; i <= retries; i++) {
     try {
@@ -248,8 +246,8 @@ export async function generateEinsteinSpeech(text: string, retries = 2): Promise
     } catch (e: any) {
       lastError = e;
       if (i < retries) {
-        const delay = 500 * (i + 1);
-        addLog({ type: 'SYSTEM', label: 'RETRYING TTS', duration: 0, status: 'ERROR', message: `Attempt ${i+1} failed. @ ${getErrorLocation(e)}` });
+        // Longer wait between retries to recover quota
+        const delay = 2000 * (i + 1);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
@@ -260,7 +258,7 @@ export async function generateEinsteinSpeech(text: string, retries = 2): Promise
     label: 'VOCAL FAULT', 
     duration: 0, 
     status: 'ERROR', 
-    message: `${lastError?.message || "Internal error"} @ ${getErrorLocation(lastError)}` 
+    message: `${lastError?.message || "Quota or service error"}` 
   });
   throw lastError;
 }

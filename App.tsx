@@ -143,21 +143,38 @@ const App: React.FC = () => {
     if (audioContextRef.current.state === 'suspended') await audioContextRef.current.resume();
 
     const cleanText = text.replace(/\[IMAGE:.*?\]/g, '').trim();
-    const chunks = cleanText.split(/(?<=[.!?])\s+/).filter(c => c.trim().length > 2);
+    // Aggressive grouping: Group multiple sentences to keep total requests low
+    const rawChunks = cleanText.split(/(?<=[.!?])\s+/);
+    const chunks: string[] = [];
+    let currentBuffer = "";
+    
+    for (const chunk of rawChunks) {
+      if ((currentBuffer.length + chunk.length) < 300) {
+        currentBuffer += (currentBuffer ? " " : "") + chunk;
+      } else {
+        if (currentBuffer) chunks.push(currentBuffer);
+        currentBuffer = chunk;
+      }
+    }
+    if (currentBuffer) chunks.push(currentBuffer);
+
     let nextStartTime = audioContextRef.current.currentTime + 0.1;
     
-    const fetchPromises = chunks.map(chunk => generateEinsteinSpeech(chunk));
-
     try {
       for (let i = 0; i < chunks.length; i++) {
         if (thisSessionId !== speechSessionId.current) return;
-        const base64 = await fetchPromises[i];
+        
+        // Strictly serial processing to prevent 429 quota exhaustion
+        const base64 = await generateEinsteinSpeech(chunks[i]);
         if (thisSessionId !== speechSessionId.current || !base64) continue;
+        
         const buffer = await decodeAudioData(decode(base64), audioContextRef.current, 24000, 1);
+        
         if (i === 0) {
           setIsSpeechLoading(false);
           setIsAudioPlaying(true);
         }
+        
         const source = audioContextRef.current.createBufferSource();
         source.buffer = buffer;
         source.connect(audioContextRef.current.destination);
@@ -165,11 +182,17 @@ const App: React.FC = () => {
         source.start(startTime);
         nextStartTime = startTime + buffer.duration;
         activeSources.current.push(source);
+        
         source.onended = () => {
           if (thisSessionId !== speechSessionId.current) return;
           activeSources.current = activeSources.current.filter(s => s !== source);
           if (activeSources.current.length === 0 && i === chunks.length - 1) stopAudio();
         };
+
+        // Aggressive Quota Guard: Wait at least 2 seconds between ANY request to the TTS model
+        if (i < chunks.length - 1) {
+          await new Promise(r => setTimeout(r, 2200)); 
+        }
       }
     } catch (e) {
       if (thisSessionId === speechSessionId.current) stopAudio();
@@ -190,6 +213,7 @@ const App: React.FC = () => {
     setIsLoading(true);
     setIsFaqOpen(false);
     setIsDropdownOpen(false);
+    // Explicitly stop audio when a new action starts, but do NOT start new audio
     stopAudio();
 
     if (isNewEra) setLastImage(null);
