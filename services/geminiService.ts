@@ -60,11 +60,8 @@ try {
   });
 }
 
-// Fixed AI initialization to be safer
+// Use named parameter for GoogleGenAI initialization
 const getAI = () => {
-  if (!process.env.API_KEY) {
-    throw new Error("API Key is missing from environment.");
-  }
   return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
@@ -173,8 +170,10 @@ export async function generateEinsteinResponse(prompt: string, history: { role: 
   try {
     const ai = getAI();
     const contents = history.concat([{ role: 'user', parts: [{ text: prompt }] }]);
-    const result = await ai.models.generateContent({ model, contents, config });
-    const textResult = result.text;
+    // Correct usage of generateContent
+    const response = await ai.models.generateContent({ model, contents, config });
+    // Use the .text property directly
+    const textResult = response.text;
     if (textResult) {
       await saveToCache('responses', key, textResult);
       addLog({ type: 'AI_TEXT', label: 'SYNTHESIS SUCCESS', duration: performance.now() - start, status: 'SUCCESS', message: 'Thought articulated.' });
@@ -203,13 +202,14 @@ export async function generateChalkboardImage(prompt: string): Promise<string> {
   const start = performance.now();
   try {
     const ai = getAI();
-    const result = await ai.models.generateContent({
+    const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: [{ text: `A physics chalkboard drawing with white chalk: ${prompt}. Artistic and minimalist.` }],
     });
     let imageData = "";
-    if (result.candidates?.[0]?.content?.parts) {
-      for (const part of result.candidates[0].content.parts) {
+    // Iterate parts to find inlineData
+    if (response.candidates?.[0]?.content?.parts) {
+      for (const part of response.candidates[0].content.parts) {
         if (part.inlineData) { imageData = `data:image/png;base64,${part.inlineData.data}`; break; }
       }
     }
@@ -247,7 +247,7 @@ export async function generateEinsteinSpeech(text: string, retries = 1): Promise
   for (let i = 0; i <= retries; i++) {
     try {
       const ai = getAI();
-      const result = await ai.models.generateContent({
+      const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
         contents: [{ parts: [{ text: ttsPrompt }] }],
         config: {
@@ -255,7 +255,7 @@ export async function generateEinsteinSpeech(text: string, retries = 1): Promise
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Charon' } } },
         },
       });
-      const base64 = result.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      const base64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
       if (base64) {
         await saveToCache('audio', key, base64);
         return base64;

@@ -3,7 +3,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Einstein's Universe</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Fira+Code&display=swap" rel="stylesheet">
     <script>
@@ -24,9 +24,9 @@
             --input-bg: #09090b;
             --aside-bg: #050505;
             --accent: #6366f1;
-            --header-h: 80px;
-            --footer-h: 140px;
-            --font-size-base: 1.15rem;
+            --header-h: 70px;
+            --footer-h: auto;
+            --font-size-base: 1rem;
         }
 
         body.light-mode {
@@ -48,6 +48,7 @@
             color: var(--text-color);
             font-family: 'Inter', sans-serif;
             height: 100vh;
+            height: -webkit-fill-available;
             width: 100vw;
             overflow: hidden;
             display: flex;
@@ -55,7 +56,7 @@
             font-size: var(--font-size-base);
         }
 
-        #root { height: 100vh; width: 100vw; display: flex; flex-direction: column; }
+        #root { height: 100%; width: 100vw; display: flex; flex-direction: column; }
 
         .flex { display: flex; }
         .flex-col { flex-direction: column; }
@@ -78,30 +79,31 @@
             flex-shrink: 0;
         }
         @media (min-width: 1024px) {
-            .header { padding: 0 2rem; }
+            .header { padding: 0 2rem; height: 80px; }
         }
 
         .footer {
-            height: var(--footer-h);
+            min-height: 100px;
             background: var(--glass-bg);
             backdrop-filter: blur(20px);
             border-top: 1px solid var(--border-color);
-            padding: 1rem;
+            padding: 0.75rem;
             flex-shrink: 0;
+            padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
         }
         @media (min-width: 1024px) {
-            .footer { padding: 1.5rem; }
+            .footer { padding: 1.5rem; height: 140px; }
         }
 
         .main-content {
-            height: calc(100vh - var(--header-h) - var(--footer-h));
+            flex: 1;
             display: flex;
-            flex-direction: column; /* Mobile Default: Vertical */
+            flex-direction: column;
             overflow: hidden;
         }
         @media (min-width: 1024px) {
             .main-content {
-                flex-direction: row; /* Desktop: Horizontal */
+                flex-direction: row;
             }
         }
 
@@ -111,7 +113,7 @@
             display: flex;
             flex-direction: column;
             width: 100%;
-            height: 55%;
+            height: 50%;
             border-bottom: 1px solid var(--border-color);
         }
         @media (min-width: 1024px) {
@@ -128,9 +130,9 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 1rem;
+            padding: 0.75rem;
             width: 100%;
-            height: 45%;
+            height: 50%;
             overflow: hidden;
         }
         @media (min-width: 1024px) {
@@ -147,25 +149,25 @@
         .chalkboard-filter {
             filter: sepia(0.2) contrast(1.1) brightness(0.9);
             box-shadow: 0 15px 40px rgba(0,0,0,0.5);
-            border-radius: 1.5rem;
+            border-radius: 1.2rem;
             max-width: 100%;
             max-height: 100%;
             object-fit: contain;
             aspect-ratio: 1/1;
-            border: 6px solid #27272a;
+            border: 4px solid #27272a;
         }
 
         .msg-container {
             max-width: 90%;
-            padding: 1.25rem;
-            border-radius: 1.5rem;
-            margin-bottom: 1.5rem;
+            padding: 1rem;
+            border-radius: 1.2rem;
+            margin-bottom: 1rem;
             box-shadow: 0 10px 25px rgba(0,0,0,0.1);
             word-wrap: break-word;
-            line-height: 1.6;
+            line-height: 1.5;
         }
         @media (min-width: 1024px) {
-            .msg-container { max-width: 85%; padding: 1.5rem; }
+            .msg-container { max-width: 85%; padding: 1.5rem; border-radius: 1.5rem; }
         }
 
         button {
@@ -173,14 +175,14 @@
             border: 1px solid var(--border-color);
             background: var(--input-bg);
             color: var(--text-color);
-            border-radius: 1rem;
-            padding: 0.6rem 1.25rem;
+            border-radius: 0.75rem;
+            padding: 0.5rem 1rem;
             font-weight: 700;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             transition: all 0.2s ease;
         }
         @media (min-width: 1024px) {
-            button { padding: 0.75rem 1.5rem; font-size: 1rem; }
+            button { padding: 0.75rem 1.5rem; font-size: 1rem; border-radius: 1rem; }
         }
         button:hover { background: var(--accent); color: white; transform: translateY(-1px); }
         button:active { transform: translateY(0); }
@@ -190,12 +192,12 @@
             color: var(--text-color);
             background: var(--input-bg);
             width: 100%;
-            padding: 1rem 1.25rem;
-            border-radius: 1.5rem;
+            padding: 0.75rem 1rem;
+            border-radius: 1rem;
             font-size: 1rem;
         }
         @media (min-width: 1024px) {
-            input { padding: 1.2rem 1.5rem; font-size: 1.1rem; }
+            input { padding: 1.2rem 1.5rem; font-size: 1.1rem; border-radius: 1.5rem; }
         }
 
         ::-webkit-scrollbar { width: 6px; }

@@ -11,16 +11,25 @@ import {
   getPerformanceLogs
 } from './services/geminiService';
 
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+}
+
 // Error Boundary for UI stability
-class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean}> {
-  constructor(props: {children: React.ReactNode}) {
+// Fix: Correctly extending React.Component with Props and State types
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false };
   }
   static getDerivedStateFromError() { return { hasError: true }; }
   componentDidCatch(error: any, errorInfo: any) { console.error("UI Crash:", error, errorInfo); }
   render() {
-    // Fixed: Accessed state via this.state
+    // Fix: Accessing state and props correctly
     if (this.state.hasError) {
       return (
         <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#000', color: '#fff', textAlign: 'center', padding: '2rem' }}>
@@ -30,7 +39,6 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
         </div>
       );
     }
-    // Fixed: Accessed props via this.props
     return this.props.children;
   }
 }
@@ -69,8 +77,6 @@ const EinsteinApp: React.FC = () => {
     ];
 
     switch (currentEra) {
-      case Era.Foundations:
-        return [...baseItems, { label: "The Rhind Papyrus", prompt: "Tell me about the mathematical secrets of the Rhind Papyrus and the figure Ahmes." }];
       case Era.Zero:
         return [...baseItems, { label: "Brahmagupta's Wisdom", prompt: "What were the specific rules for the 'void' set by the great Indian mathematician Brahmagupta?" }];
       case Era.Geometry:
@@ -417,7 +423,7 @@ const EinsteinApp: React.FC = () => {
 };
 
 const App: React.FC = () => (
-  // Fixed: Wrapped content with ErrorBoundary and added required EinsteinApp
+  // Fix: Providing children prop to ErrorBoundary
   <ErrorBoundary>
     <EinsteinApp />
   </ErrorBoundary>
