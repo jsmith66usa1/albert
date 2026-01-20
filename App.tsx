@@ -11,7 +11,31 @@ import {
   getPerformanceLogs
 } from './services/geminiService';
 
-const App: React.FC = () => {
+// Error Boundary for UI stability
+class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean}> {
+  constructor(props: {children: React.ReactNode}) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(error: any, errorInfo: any) { console.error("UI Crash:", error, errorInfo); }
+  render() {
+    // Fixed: Accessed state via this.state
+    if (this.state.hasError) {
+      return (
+        <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#000', color: '#fff', textAlign: 'center', padding: '2rem' }}>
+          <h1 className="serif">Ach, ze universe has collapsed!</h1>
+          <p>A mathematical error has occurred in the rendering engine.</p>
+          <button onClick={() => window.location.reload()} style={{ marginTop: '2rem', background: '#6366f1', color: '#fff', padding: '1rem 2rem' }}>Re-initialize Laboratory</button>
+        </div>
+      );
+    }
+    // Fixed: Accessed props via this.props
+    return this.props.children;
+  }
+}
+
+const EinsteinApp: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentEra, setCurrentEra] = useState<Era>(Era.Introduction);
   const [isLoading, setIsLoading] = useState(false);
@@ -32,61 +56,35 @@ const App: React.FC = () => {
   const activeSources = useRef<AudioBufferSourceNode[]>([]);
   const speechSessionId = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   
   const dropdownRef = useRef<HTMLDivElement>(null);
   const faqRef = useRef<HTMLDivElement>(null);
 
   const eraArchiveItems = useMemo(() => {
-    const defaultItems = [
+    const baseItems = [
+      { label: "Visual Analysis: Draw Diagram", prompt: `Professor, please draw a detailed chalkboard diagram explaining the core concept of ${currentEra}.` },
       { label: "Modern Applications", prompt: `Professor, how does ${currentEra} apply to our world today?` },
       { label: "Historical Rivals", prompt: `Who were the other great minds debating these ideas during the era of ${currentEra}?` }
     ];
 
     switch (currentEra) {
       case Era.Foundations:
-        return [
-          { label: "Diagram: Egyptian Ropes", prompt: "Show me a detailed diagram of how 'Rope Stretchers' used 3-4-5 knots to create right angles in Egypt." },
-          { label: "The Rhind Papyrus", prompt: "Tell me about the mathematical secrets of the Rhind Papyrus and the figure Ahmes." },
-          ...defaultItems
-        ];
+        return [...baseItems, { label: "The Rhind Papyrus", prompt: "Tell me about the mathematical secrets of the Rhind Papyrus and the figure Ahmes." }];
       case Era.Zero:
-        return [
-          { label: "Diagram: Zero Evolution", prompt: "Draw a diagram showing the visual evolution of the zero symbol from a dot to a circle." },
-          { label: "Brahmagupta's Wisdom", prompt: "What were the specific rules for the 'void' set by the great Indian mathematician Brahmagupta?" },
-          ...defaultItems
-        ];
+        return [...baseItems, { label: "Brahmagupta's Wisdom", prompt: "What were the specific rules for the 'void' set by the great Indian mathematician Brahmagupta?" }];
       case Era.Geometry:
-        return [
-          { label: "Diagram: Euclid's Proof", prompt: "Show me a visual proof diagram of the Pythagorean theorem as Euclid would have drawn it." },
-          { label: "Euclid of Alexandria", prompt: "Tell me about Euclid and why his 'Elements' is the most successful textbook in history." },
-          ...defaultItems
-        ];
+        return [...baseItems, { label: "Euclid of Alexandria", prompt: "Tell me about Euclid and why his 'Elements' is the most successful textbook in history." }];
       case Era.Algebra:
-        return [
-          { label: "Diagram: Al-Jabr", prompt: "Draw a diagram of 'completing the square' as a geometric puzzle, the way Al-Khwarizmi did." },
-          { label: "Al-Khwarizmi", prompt: "Tell me about the House of Wisdom in Baghdad and the birth of Algebra." },
-          ...defaultItems
-        ];
+        return [...baseItems, { label: "Al-Khwarizmi", prompt: "Tell me about the House of Wisdom in Baghdad and the birth of Algebra." }];
       case Era.Calculus:
-        return [
-          { label: "Diagram: Newton's Fluxion", prompt: "Sketch a diagram of an apple's path and the tangent line representing its instantaneous velocity." },
-          { label: "Leibniz & The Notation", prompt: "Tell me about Gottfried Wilhelm Leibniz and his beautiful 'd/dx' notation." },
-          ...defaultItems
-        ];
+        return [...baseItems, { label: "Leibniz & The Notation", prompt: "Tell me about Gottfried Wilhelm Leibniz and his beautiful 'd/dx' notation." }];
       case Era.Quantum:
-        return [
-          { label: "Diagram: Atom Clouds", prompt: "Draw a diagram comparing the Bohr model of the atom to the modern probability cloud model." },
-          { label: "Niels Bohr", prompt: "Tell me about my friendly debates with Niels Bohr and the principle of complementarity." },
-          ...defaultItems
-        ];
+        return [...baseItems, { label: "Niels Bohr", prompt: "Tell me about my friendly debates with Niels Bohr and the principle of complementarity." }];
       case Era.Unified:
-        return [
-          { label: "Diagram: Spacetime Tapestry", prompt: "Draw a diagram of a heavy mass bending the fabric of spacetime into a funnel." },
-          { label: "The Search for Harmony", prompt: "Who are the modern physicists carrying on the search for the Unified Theory?" },
-          ...defaultItems
-        ];
+        return [...baseItems, { label: "The Search for Harmony", prompt: "Who are the modern physicists carrying on the search for the Unified Theory?" }];
       default:
-        return defaultItems;
+        return baseItems;
     }
   }, [currentEra]);
 
@@ -97,12 +95,16 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) setIsDropdownOpen(false);
       if (faqRef.current && !faqRef.current.contains(event.target as Node)) setIsFaqOpen(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
   }, []);
 
   useEffect(() => {
@@ -113,13 +115,18 @@ const App: React.FC = () => {
   useEffect(() => {
     const mathJax = (window as any).MathJax;
     if (mathJax?.typesetPromise && messages.length > 0) {
-      setTimeout(() => mathJax.typesetPromise().catch(() => {}), 200);
+      const timer = setTimeout(() => {
+        try { mathJax.typesetPromise().catch(() => {}); } catch (e) {}
+      }, 200);
+      return () => clearTimeout(timer);
     }
   }, [messages]);
 
   const stopAudio = useCallback(() => {
     speechSessionId.current++;
-    activeSources.current.forEach(s => { try { s.stop(); s.disconnect(); } catch (e) {} });
+    activeSources.current.forEach(s => { 
+      try { s.stop(); s.disconnect(); } catch (e) {} 
+    });
     activeSources.current = [];
     setIsAudioPlaying(false);
     setIsSpeechLoading(false);
@@ -137,44 +144,38 @@ const App: React.FC = () => {
     setIsSpeechLoading(true);
     setCurrentlySpeakingId(msgId);
 
-    if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-    }
-    if (audioContextRef.current.state === 'suspended') await audioContextRef.current.resume();
-
-    const cleanText = text.replace(/\[IMAGE:.*?\]/g, '').trim();
-    // Aggressive grouping: Group multiple sentences to keep total requests low
-    const rawChunks = cleanText.split(/(?<=[.!?])\s+/);
-    const chunks: string[] = [];
-    let currentBuffer = "";
-    
-    for (const chunk of rawChunks) {
-      if ((currentBuffer.length + chunk.length) < 300) {
-        currentBuffer += (currentBuffer ? " " : "") + chunk;
-      } else {
-        if (currentBuffer) chunks.push(currentBuffer);
-        currentBuffer = chunk;
-      }
-    }
-    if (currentBuffer) chunks.push(currentBuffer);
-
-    let nextStartTime = audioContextRef.current.currentTime + 0.1;
-    
     try {
+      if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      }
+      if (audioContextRef.current.state === 'suspended') await audioContextRef.current.resume();
+
+      const cleanText = text.replace(/\[IMAGE:.*?\]/g, '').trim();
+      const rawChunks = cleanText.split(/(?<=[.!?])\s+/);
+      const chunks: string[] = [];
+      let currentBuffer = "";
+      
+      for (const chunk of rawChunks) {
+        if ((currentBuffer.length + chunk.length) < 300) {
+          currentBuffer += (currentBuffer ? " " : "") + chunk;
+        } else {
+          if (currentBuffer) chunks.push(currentBuffer);
+          currentBuffer = chunk;
+        }
+      }
+      if (currentBuffer) chunks.push(currentBuffer);
+
+      let nextStartTime = audioContextRef.current.currentTime + 0.1;
+      
       for (let i = 0; i < chunks.length; i++) {
         if (thisSessionId !== speechSessionId.current) return;
-        
-        // Strictly serial processing to prevent 429 quota exhaustion
         const base64 = await generateEinsteinSpeech(chunks[i]);
         if (thisSessionId !== speechSessionId.current || !base64) continue;
-        
         const buffer = await decodeAudioData(decode(base64), audioContextRef.current, 24000, 1);
-        
         if (i === 0) {
           setIsSpeechLoading(false);
           setIsAudioPlaying(true);
         }
-        
         const source = audioContextRef.current.createBufferSource();
         source.buffer = buffer;
         source.connect(audioContextRef.current.destination);
@@ -182,24 +183,20 @@ const App: React.FC = () => {
         source.start(startTime);
         nextStartTime = startTime + buffer.duration;
         activeSources.current.push(source);
-        
         source.onended = () => {
           if (thisSessionId !== speechSessionId.current) return;
           activeSources.current = activeSources.current.filter(s => s !== source);
           if (activeSources.current.length === 0 && i === chunks.length - 1) stopAudio();
         };
-
-        // Aggressive Quota Guard: Wait at least 2 seconds between ANY request to the TTS model
-        if (i < chunks.length - 1) {
-          await new Promise(r => setTimeout(r, 2200)); 
-        }
+        if (i < chunks.length - 1) await new Promise(r => setTimeout(r, 2200)); 
       }
     } catch (e) {
       if (thisSessionId === speechSessionId.current) stopAudio();
     }
   };
 
-  const playLatestSpeech = () => {
+  const playLatestSpeech = (e: React.MouseEvent | React.TouchEvent | React.PointerEvent) => {
+    e.preventDefault();
     const lastEinsteinMsg = messages.find(m => m.role === 'einstein');
     if (lastEinsteinMsg) playChunkedSpeech(lastEinsteinMsg.text, messages.indexOf(lastEinsteinMsg));
   };
@@ -213,7 +210,6 @@ const App: React.FC = () => {
     setIsLoading(true);
     setIsFaqOpen(false);
     setIsDropdownOpen(false);
-    // Explicitly stop audio when a new action starts, but do NOT start new audio
     stopAudio();
 
     if (isNewEra) setLastImage(null);
@@ -241,7 +237,7 @@ const App: React.FC = () => {
         }
       }
     } catch (err) {
-      console.error(err);
+      console.error("Action error:", err);
     } finally {
       if (!controller.signal.aborted) setIsLoading(false);
     }
@@ -256,11 +252,21 @@ const App: React.FC = () => {
     if (chapter) handleAction(chapter.prompt, era, true);
   };
 
+  const onFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (userInput.trim() && !isLoading) {
+      const text = userInput;
+      setUserInput('');
+      if (inputRef.current) inputRef.current.blur();
+      handleAction(text);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-theme text-theme" style={{ height: '100vh', width: '100vw' }}>
       {!hasStarted && (
         <div className="welcome-screen">
-          <button className="welcome-btn" onClick={() => { setHasStarted(true); startEra(Era.Introduction); }}>
+          <button type="button" className="welcome-btn" onClick={() => { setHasStarted(true); startEra(Era.Introduction); }}>
             <div style={{ marginBottom: '2rem', width: '240px', height: '240px', borderRadius: '50%', overflow: 'hidden', border: '4px solid rgba(255,255,255,0.2)', boxShadow: '0 0 50px rgba(99, 102, 241, 0.3)' }}>
               <img 
                 src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Albert_Einstein_Head.jpg/480px-Albert_Einstein_Head.jpg" 
@@ -281,25 +287,30 @@ const App: React.FC = () => {
           <h1 className="serif lg-block hidden" style={{ fontSize: '1.6rem', fontWeight: 900 }}>Einstein's Universe</h1>
         </div>
         <div className="flex items-center gap-4">
-          <button onClick={() => setIsLogOpen(true)} style={{ fontSize: '0.9rem' }}>LOGS</button>
-          <button onClick={playLatestSpeech} disabled={isLoading || messages.length === 0} style={{ minWidth: '130px', backgroundColor: (isAudioPlaying || isSpeechLoading) ? '#ef4444' : 'var(--accent)', color: '#fff', border: 'none', opacity: (isLoading || messages.length === 0) ? 0.5 : 1 }}>
+          <button type="button" onClick={() => setIsLogOpen(true)} style={{ fontSize: '0.9rem' }}>LOGS</button>
+          <button 
+            type="button" 
+            onPointerDown={playLatestSpeech} 
+            disabled={isLoading || messages.length === 0} 
+            style={{ minWidth: '130px', backgroundColor: (isAudioPlaying || isSpeechLoading) ? '#ef4444' : 'var(--accent)', color: '#fff', border: 'none', opacity: (isLoading || messages.length === 0) ? 0.5 : 1 }}
+          >
             {isSpeechLoading ? 'LOADING...' : isAudioPlaying ? 'STOP' : 'LISTEN'}
           </button>
           <div className="relative" ref={dropdownRef}>
-            <button onClick={() => !isLoading && setIsDropdownOpen(!isDropdownOpen)} disabled={isLoading} style={{ color: 'var(--accent)', minWidth: '180px', opacity: isLoading ? 0.6 : 1 }}>
+            <button type="button" onClick={() => !isLoading && setIsDropdownOpen(!isDropdownOpen)} disabled={isLoading} style={{ color: 'var(--accent)', minWidth: '180px', opacity: isLoading ? 0.6 : 1 }}>
               {currentEra} ▾
             </button>
             {isDropdownOpen && (
               <div className="absolute z-50" style={{ top: '100%', right: 0, marginTop: '0.75rem', width: '280px', borderRadius: '1.5rem', padding: '0.75rem 0', background: 'var(--glass-bg)', border: '1px solid var(--border-color)', backdropFilter: 'blur(30px)', boxShadow: '0 20px 50px rgba(0,0,0,0.3)' }}>
                 {CHAPTERS.map(ch => (
-                  <button key={ch.id} onClick={() => startEra(ch.id)} disabled={isLoading} style={{ width: '100%', textAlign: 'left', padding: '1rem 1.5rem', fontSize: '1.1rem', fontWeight: 800, color: currentEra === ch.id ? 'var(--accent)' : 'inherit', border: 'none', background: 'transparent', opacity: isLoading ? 0.5 : 1 }}>
+                  <button key={ch.id} type="button" onClick={() => startEra(ch.id)} disabled={isLoading} style={{ width: '100%', textAlign: 'left', padding: '1rem 1.5rem', fontSize: '1.1rem', fontWeight: 800, color: currentEra === ch.id ? 'var(--accent)' : 'inherit', border: 'none', background: 'transparent', opacity: isLoading ? 0.5 : 1 }}>
                     {ch.id}
                   </button>
                 ))}
               </div>
             )}
           </div>
-          <button onClick={() => setIsDarkMode(!isDarkMode)} style={{ width: '48px', height: '48px', padding: 0, fontSize: '1.4rem' }}>{isDarkMode ? '☀️' : '🌙'}</button>
+          <button type="button" onClick={() => setIsDarkMode(!isDarkMode)} style={{ width: '48px', height: '48px', padding: 0, fontSize: '1.4rem' }}>{isDarkMode ? '☀️' : '🌙'}</button>
         </div>
       </header>
 
@@ -332,31 +343,45 @@ const App: React.FC = () => {
       <footer className="footer z-50">
         <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', display: 'flex', flexDirection: 'column' }}>
           <div className="flex gap-4" style={{ marginBottom: '1rem' }}>
-             <button onClick={() => handleAction(`Professor, show me more math for ${currentEra}.`)} disabled={isLoading} style={{ opacity: isLoading ? 0.6 : 1 }}>
+             <button type="button" onClick={() => handleAction(`Professor, show me more math for ${currentEra}.`)} disabled={isLoading} style={{ opacity: isLoading ? 0.6 : 1 }}>
                DEEPER MATHEMATICS
              </button>
              <div className="relative" ref={faqRef}>
-                <button onClick={() => !isLoading && setIsFaqOpen(!isFaqOpen)} disabled={isLoading} style={{ color: 'var(--accent)', opacity: isLoading ? 0.6 : 1, minWidth: '150px' }}>
+                <button type="button" onClick={() => !isLoading && setIsFaqOpen(!isFaqOpen)} disabled={isLoading} style={{ color: 'var(--accent)', opacity: isLoading ? 0.6 : 1, minWidth: '150px' }}>
                   ARCHIVE ▾
                 </button>
                 {isFaqOpen && (
                   <div className="absolute z-50" style={{ bottom: '100%', left: 0, marginBottom: '0.75rem', width: '350px', borderRadius: '1.5rem', padding: '0.75rem 0', background: 'var(--glass-bg)', border: '1px solid var(--border-color)', backdropFilter: 'blur(30px)', boxShadow: '0 -20px 50px rgba(0,0,0,0.3)' }}>
                     <div style={{ padding: '0.5rem 1.5rem', fontSize: '0.75rem', fontWeight: 900, opacity: 0.5, textTransform: 'uppercase', letterSpacing: '0.15em', borderBottom: '1px solid var(--border-color)', marginBottom: '0.5rem' }}>Archive: {currentEra}</div>
                     {eraArchiveItems.map((item, i) => (
-                      <button key={i} onClick={() => handleAction(item.prompt)} disabled={isLoading} style={{ width: '100%', textAlign: 'left', padding: '0.8rem 1.5rem', fontSize: '0.95rem', fontWeight: 800, border: 'none', background: 'transparent', transition: 'all 0.2s', opacity: isLoading ? 0.5 : 1 }} className="hover:bg-accent hover:text-white">
+                      <button key={i} type="button" onClick={() => handleAction(item.prompt)} disabled={isLoading} style={{ width: '100%', textAlign: 'left', padding: '0.8rem 1.5rem', fontSize: '0.95rem', fontWeight: 800, border: 'none', background: 'transparent', transition: 'all 0.2s', opacity: isLoading ? 0.5 : 1 }} className="hover:bg-accent hover:text-white">
                         {item.label}
                       </button>
                     ))}
                   </div>
                 )}
              </div>
-             <button onClick={() => { const currentIndex = CHAPTERS.findIndex(c => c.id === currentEra); if (currentIndex < CHAPTERS.length - 1) startEra(CHAPTERS[currentIndex+1].id); }} disabled={currentEra === Era.Unified || isLoading} style={{ opacity: (currentEra === Era.Unified || isLoading) ? 0.5 : 1 }}>
+             <button type="button" onClick={() => { const currentIndex = CHAPTERS.findIndex(c => c.id === currentEra); if (currentIndex < CHAPTERS.length - 1) startEra(CHAPTERS[currentIndex+1].id); }} disabled={currentEra === Era.Unified || isLoading} style={{ opacity: (currentEra === Era.Unified || isLoading) ? 0.5 : 1 }}>
                NEXT ERA
              </button>
           </div>
-          <form onSubmit={(e) => { e.preventDefault(); if (userInput.trim() && !isLoading) { handleAction(userInput); setUserInput(''); } }} className="relative flex w-full">
-            <input type="text" value={userInput} onChange={(e) => setUserInput(e.target.value)} disabled={isLoading} placeholder={isLoading ? "The Professor is deep in thought..." : "Ask the Professor anything..." } style={{ paddingRight: '120px' }} />
-            <button type="submit" disabled={isLoading || !userInput.trim()} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', backgroundColor: 'var(--accent)', color: '#fff', borderRadius: '1.2rem', fontWeight: 900, border: 'none', padding: '0.75rem 1.5rem', opacity: (isLoading || !userInput.trim()) ? 0.6 : 1 }}>SEND</button>
+          <form onSubmit={onFormSubmit} className="relative flex w-full">
+            <input 
+              ref={inputRef}
+              type="text" 
+              value={userInput} 
+              onChange={(e) => setUserInput(e.target.value)} 
+              disabled={isLoading} 
+              placeholder={isLoading ? "The Professor is deep in thought..." : "Ask the Professor anything..." } 
+              style={{ paddingRight: '120px' }} 
+            />
+            <button 
+              type="submit" 
+              disabled={isLoading || !userInput.trim()} 
+              style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', backgroundColor: 'var(--accent)', color: '#fff', borderRadius: '1.2rem', fontWeight: 900, border: 'none', padding: '0.75rem 1.5rem', opacity: (isLoading || !userInput.trim()) ? 0.6 : 1 }}
+            >
+              SEND
+            </button>
           </form>
         </div>
       </footer>
@@ -366,7 +391,10 @@ const App: React.FC = () => {
           <div className="bg-theme w-full max-w-4xl h-3/4 rounded-[2rem] flex flex-col overflow-hidden border border-white/10" style={{ background: 'var(--glass-bg)' }}>
             <div className="p-8 flex justify-between items-center border-b border-white/5">
               <h2 className="serif" style={{ fontSize: '1.8rem', fontWeight: 900 }}>Telemetry</h2>
-              <button onClick={() => setIsLogOpen(false)} style={{ borderRadius: '50%', width: '40px', height: '40px', padding: 0 }}>✕</button>
+              <div className="flex gap-4">
+                <button type="button" onClick={() => window.location.reload()} style={{ color: '#ef4444', borderColor: '#ef4444' }}>RESET SYSTEM</button>
+                <button type="button" onClick={() => setIsLogOpen(false)} style={{ borderRadius: '50%', width: '40px', height: '40px', padding: 0 }}>✕</button>
+              </div>
             </div>
             <div className="flex-1 overflow-y-auto p-8 font-mono text-[0.9rem] space-y-6 no-scrollbar">
               {logs.length === 0 && <div className="text-center opacity-30 mt-20">NO SYSTEM DATA RECORDED</div>}
@@ -387,5 +415,12 @@ const App: React.FC = () => {
     </div>
   );
 };
+
+const App: React.FC = () => (
+  // Fixed: Wrapped content with ErrorBoundary and added required EinsteinApp
+  <ErrorBoundary>
+    <EinsteinApp />
+  </ErrorBoundary>
+);
 
 export default App;

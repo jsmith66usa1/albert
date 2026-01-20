@@ -17,8 +17,8 @@ const firebaseConfig = {
 let performanceLogs: LogEntry[] = [];
 export const getPerformanceLogs = () => performanceLogs;
 
-const getErrorLocation = (error: Error): string => {
-  if (!error.stack) return "unknown location";
+const getErrorLocation = (error: any): string => {
+  if (!error || !error.stack) return "unknown location";
   const stackLines = error.stack.split('\n');
   const callerLine = stackLines[1] || stackLines[0];
   const match = callerLine.match(/(?:at\s+)?(.*\.(?:ts|tsx|js|jsx):(\d+):(\d+))/);
@@ -60,14 +60,24 @@ try {
   });
 }
 
-const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+// Fixed AI initialization to be safer
+const getAI = () => {
+  if (!process.env.API_KEY) {
+    throw new Error("API Key is missing from environment.");
+  }
+  return new GoogleGenAI({ apiKey: process.env.API_KEY });
+};
 
 async function generateCacheKey(input: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(input);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
+  try {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(input);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
+  } catch (e) {
+    return "fallback_key_" + Math.random().toString(36).substring(2, 7);
+  }
 }
 
 async function getFromCache(category: string, key: string): Promise<any> {
@@ -153,8 +163,11 @@ export async function generateEinsteinResponse(prompt: string, history: { role: 
   const config = { systemInstruction, temperature: 0.8 };
   const cacheInput = JSON.stringify({ history, prompt, systemInstruction });
   const key = await generateCacheKey(cacheInput);
-  const cached = await getFromCache('responses', key);
-  if (cached) return cached;
+  
+  try {
+    const cached = await getFromCache('responses', key);
+    if (cached) return cached;
+  } catch(e) {}
 
   const start = performance.now();
   try {
@@ -182,8 +195,11 @@ export async function generateEinsteinResponse(prompt: string, history: { role: 
 
 export async function generateChalkboardImage(prompt: string): Promise<string> {
   const key = await generateCacheKey(prompt);
-  const cached = await getFromCache('images', key);
-  if (cached) return cached;
+  try {
+    const cached = await getFromCache('images', key);
+    if (cached) return cached;
+  } catch(e) {}
+  
   const start = performance.now();
   try {
     const ai = getAI();
@@ -220,15 +236,17 @@ export async function generateEinsteinSpeech(text: string, retries = 1): Promise
   if (!optimized) return "";
 
   const key = await generateCacheKey(optimized);
-  const cached = await getFromCache('audio', key);
-  if (cached) return cached;
+  try {
+    const cached = await getFromCache('audio', key);
+    if (cached) return cached;
+  } catch(e) {}
 
-  const ai = getAI();
   let lastError: any = null;
   const ttsPrompt = `Speak as Professor Albert Einstein with a heavy German accent: ${optimized}`;
 
   for (let i = 0; i <= retries; i++) {
     try {
+      const ai = getAI();
       const result = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
         contents: [{ parts: [{ text: ttsPrompt }] }],
@@ -246,7 +264,6 @@ export async function generateEinsteinSpeech(text: string, retries = 1): Promise
     } catch (e: any) {
       lastError = e;
       if (i < retries) {
-        // Longer wait between retries to recover quota
         const delay = 2000 * (i + 1);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
@@ -264,13 +281,18 @@ export async function generateEinsteinSpeech(text: string, retries = 1): Promise
 }
 
 export const decode = (base64: string) => {
-  const b = atob(base64);
-  const bytes = new Uint8Array(b.length);
-  for (let i = 0; i < b.length; i++) bytes[i] = b.charCodeAt(i);
-  return bytes;
+  try {
+    const b = atob(base64);
+    const bytes = new Uint8Array(b.length);
+    for (let i = 0; i < b.length; i++) bytes[i] = b.charCodeAt(i);
+    return bytes;
+  } catch(e) {
+    return new Uint8Array(0);
+  }
 };
 
 export const decodeAudioData = async (data: Uint8Array, ctx: AudioContext, sampleRate: number, numChannels: number) => {
+  if (data.length === 0) throw new Error("No audio data to decode");
   const dataInt16 = new Int16Array(data.buffer);
   const frameCount = dataInt16.length / numChannels;
   const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
