@@ -170,9 +170,7 @@ export async function generateEinsteinResponse(prompt: string, history: { role: 
   try {
     const ai = getAI();
     const contents = history.concat([{ role: 'user', parts: [{ text: prompt }] }]);
-    // Correct usage of generateContent
     const response = await ai.models.generateContent({ model, contents, config });
-    // Use the .text property directly
     const textResult = response.text;
     if (textResult) {
       await saveToCache('responses', key, textResult);
@@ -207,7 +205,6 @@ export async function generateChalkboardImage(prompt: string): Promise<string> {
       contents: [{ text: `A physics chalkboard drawing with white chalk: ${prompt}. Artistic and minimalist.` }],
     });
     let imageData = "";
-    // Iterate parts to find inlineData
     if (response.candidates?.[0]?.content?.parts) {
       for (const part of response.candidates[0].content.parts) {
         if (part.inlineData) { imageData = `data:image/png;base64,${part.inlineData.data}`; break; }
@@ -231,6 +228,10 @@ export async function generateChalkboardImage(prompt: string): Promise<string> {
   }
 }
 
+/**
+ * Generates speech data for Einstein.
+ * Fixed: Uses 'gemini-2.5-flash-preview-tts' and ensures correct audio part extraction.
+ */
 export async function generateEinsteinSpeech(text: string, retries = 1): Promise<string> {
   const optimized = mathPhoneticizer(text).substring(0, 500);
   if (!optimized) return "";
@@ -255,7 +256,11 @@ export async function generateEinsteinSpeech(text: string, retries = 1): Promise
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Charon' } } },
         },
       });
-      const base64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      // Extract audio data from parts
+      const parts = response.candidates?.[0]?.content?.parts;
+      const audioPart = parts?.find(p => p.inlineData);
+      const base64 = audioPart?.inlineData?.data;
+      
       if (base64) {
         await saveToCache('audio', key, base64);
         return base64;
