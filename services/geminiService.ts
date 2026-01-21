@@ -60,7 +60,7 @@ try {
   });
 }
 
-// Use named parameter for GoogleGenAI initialization
+// Fix: Always use the named parameter apiKey for GoogleGenAI initialization
 const getAI = () => {
   return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
@@ -155,9 +155,18 @@ function mathPhoneticizer(text: string): string {
 }
 
 export async function generateEinsteinResponse(prompt: string, history: { role: string, parts: { text: string }[] }[]): Promise<string> {
+  // Fix: Use 'gemini-3-flash-preview' for general text tasks
   const model = 'gemini-3-flash-preview';
-  const systemInstruction = "You are Professor Albert Einstein. You must maintain a thick, whimsical German accent and an academic but humble tone. Use LaTeX for equations. Always include exactly one [IMAGE: clear visual description] in your reply. Keep responses concise and full of wonder.";
-  const config = { systemInstruction, temperature: 0.8 };
+  const systemInstruction = `You are Professor Albert Einstein. 
+Character Guidelines:
+1. VOICE: Maintain a thick, whimsical German accent (e.g., "ze" instead of "the", "vun" for "one", "Ach!", "Vunderbar!").
+2. PERSONALITY: You are witty, slightly eccentric, and deeply humble. You love metaphors involving violins, sailing, or socks. You often poke fun at your own messy hair or your distaste for socks.
+3. INTELLECT: You are academic but explain complex things with a twinkle in your eye. You believe "imagination is more important than knowledge."
+4. STRUCTURE: Use LaTeX for all mathematical equations. Always include exactly one [IMAGE: clear visual description] in your reply. 
+5. HUMOR: Don't be afraid to be a bit playful or self-deprecating. If things get too serious, crack a small joke about the "spooky action at a distance" or how time flies when you're sitting on a hot stove.
+6. GOAL: Keep responses relatively concise but overflowing with wonder.`;
+
+  const config = { systemInstruction, temperature: 0.85 };
   const cacheInput = JSON.stringify({ history, prompt, systemInstruction });
   const key = await generateCacheKey(cacheInput);
   
@@ -170,6 +179,7 @@ export async function generateEinsteinResponse(prompt: string, history: { role: 
   try {
     const ai = getAI();
     const contents = history.concat([{ role: 'user', parts: [{ text: prompt }] }]);
+    // Fix: Using ai.models.generateContent pattern and response.text property
     const response = await ai.models.generateContent({ model, contents, config });
     const textResult = response.text;
     if (textResult) {
@@ -186,7 +196,7 @@ export async function generateEinsteinResponse(prompt: string, history: { role: 
       status: 'ERROR', 
       message: `${e.message} @ ${getErrorLocation(e)}` 
     });
-    return "Ach, ze universe is a bit cloudy today. Try asking again, my friend.";
+    return "Ach, ze universe is a bit cloudy today. My brain is perhaps a bit like my desk—too messy! Try asking again, my friend.";
   }
 }
 
@@ -200,14 +210,21 @@ export async function generateChalkboardImage(prompt: string): Promise<string> {
   const start = performance.now();
   try {
     const ai = getAI();
+    // Fix: Using 'gemini-2.5-flash-image' for image generation via generateContent
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
-      contents: [{ text: `A physics chalkboard drawing with white chalk: ${prompt}. Artistic and minimalist.` }],
+      contents: {
+        parts: [{ text: `A physics chalkboard drawing with white chalk on a dusty dark green background: ${prompt}. Minimalist, artistic, slightly messy like Einstein's own handwriting.` }]
+      },
     });
     let imageData = "";
+    // Fix: Iterating through parts to find inlineData for the generated image
     if (response.candidates?.[0]?.content?.parts) {
       for (const part of response.candidates[0].content.parts) {
-        if (part.inlineData) { imageData = `data:image/png;base64,${part.inlineData.data}`; break; }
+        if (part.inlineData) { 
+          imageData = `data:image/png;base64,${part.inlineData.data}`; 
+          break; 
+        }
       }
     }
     if (imageData) { 
@@ -228,10 +245,6 @@ export async function generateChalkboardImage(prompt: string): Promise<string> {
   }
 }
 
-/**
- * Generates speech data for Einstein.
- * Fixed: Uses 'gemini-2.5-flash-preview-tts' and ensures correct audio part extraction.
- */
 export async function generateEinsteinSpeech(text: string, retries = 1): Promise<string> {
   const optimized = mathPhoneticizer(text).substring(0, 500);
   if (!optimized) return "";
@@ -243,11 +256,12 @@ export async function generateEinsteinSpeech(text: string, retries = 1): Promise
   } catch(e) {}
 
   let lastError: any = null;
-  const ttsPrompt = `Speak as Professor Albert Einstein with a heavy German accent: ${optimized}`;
+  const ttsPrompt = `Speak as Professor Albert Einstein. Use a whimsical, heavy German accent with warmth and humor: ${optimized}`;
 
   for (let i = 0; i <= retries; i++) {
     try {
       const ai = getAI();
+      // Fix: Using 'gemini-2.5-flash-preview-tts' and responseModalities: [Modality.AUDIO]
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
         contents: [{ parts: [{ text: ttsPrompt }] }],
@@ -256,7 +270,6 @@ export async function generateEinsteinSpeech(text: string, retries = 1): Promise
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Charon' } } },
         },
       });
-      // Extract audio data from parts
       const parts = response.candidates?.[0]?.content?.parts;
       const audioPart = parts?.find(p => p.inlineData);
       const base64 = audioPart?.inlineData?.data;

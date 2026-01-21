@@ -20,8 +20,8 @@ interface ErrorBoundaryState {
 
 /**
  * ErrorBoundary component to catch rendering errors.
- * Fix: Explicitly defining generic types for React.Component<P, S>
  */
+// Fix: Added explicit types to React.Component to resolve 'state', 'props' and 'children' errors
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
@@ -33,6 +33,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 
   render() {
+    // Fix: access state correctly via this.state
     if (this.state.hasError) {
       return (
         <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#000', color: '#fff', textAlign: 'center', padding: '2rem' }}>
@@ -41,6 +42,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
         </div>
       );
     }
+    // Fix: access props correctly via this.props
     return this.props.children;
   }
 }
@@ -59,16 +61,30 @@ const EinsteinApp: React.FC = () => {
   const [hasStarted, setHasStarted] = useState(false);
   const [currentlySpeakingId, setCurrentlySpeakingId] = useState<number | null>(null);
   
-  // Computed state for overall "working" status
   const isWorking = isLoading || isImageLoading;
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const activeSources = useRef<AudioBufferSourceNode[]>([]);
   const speechSessionId = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const faqRef = useRef<HTMLDivElement>(null);
+
+  // Logic to handle "Scroll to Top" of new content
+  useEffect(() => {
+    if (messages.length > 0 && !isLoading) {
+      // Small timeout to ensure DOM is ready after rendering new message
+      setTimeout(() => {
+        if (scrollContainerRef.current) {
+          const lastMsg = scrollContainerRef.current.querySelector('.msg-container:last-child');
+          if (lastMsg) {
+            lastMsg.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }
+      }, 100);
+    }
+  }, [messages, isLoading]);
 
   useEffect(() => {
     const triggerMath = () => {
@@ -79,10 +95,6 @@ const EinsteinApp: React.FC = () => {
     triggerMath();
     const timer = setTimeout(triggerMath, 400);
     return () => clearTimeout(timer);
-  }, [messages, isLoading]);
-
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
   const stopAudio = useCallback(() => {
@@ -234,7 +246,7 @@ const EinsteinApp: React.FC = () => {
 
       <div className="main-content">
         <section className="chat-sidebar">
-          <div className="chat-scroll-container no-scrollbar">
+          <div className="chat-scroll-container no-scrollbar" ref={scrollContainerRef}>
             <div className="flex flex-col">
               {messages.map((msg, idx) => (
                 <div key={idx} className={`msg-container ${msg.role === 'einstein' ? 'bg-einstein' : 'bg-user'}`}>
@@ -254,7 +266,6 @@ const EinsteinApp: React.FC = () => {
               {isLoading && (
                 <div className="opacity-40 text-xs italic mb-4 animate-pulse px-2 border-l-2 border-indigo-500">Pondering ze universe...</div>
               )}
-              <div ref={chatEndRef} />
             </div>
           </div>
         </section>
@@ -344,8 +355,8 @@ const EinsteinApp: React.FC = () => {
   );
 };
 
-// Fix: Passing required children to ErrorBoundary
 const App: React.FC = () => (
+  // Fix: Wrapping EinsteinApp correctly as children of ErrorBoundary
   <ErrorBoundary>
     <EinsteinApp />
   </ErrorBoundary>
