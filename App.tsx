@@ -1,5 +1,5 @@
 
-import React, { Component, useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Era, Message, LogEntry } from './types';
 import { CHAPTERS } from './constants';
 import { 
@@ -22,9 +22,9 @@ interface ErrorBoundaryState {
 
 /**
  * Robust ErrorBoundary to catch and handle UI crashes gracefully.
- * Fixed "Property 'props' does not exist" error by extending imported Component directly.
+ * Updated to use React.Component with explicit generic types to resolve TS property errors.
  */
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false };
@@ -39,6 +39,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 
   render() {
+    // Accessing state and props via React.Component properties
     if (this.state.hasError) {
       return (
         <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#000', color: '#fff', textAlign: 'center', padding: '2rem' }}>
