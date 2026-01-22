@@ -22,14 +22,12 @@ interface ErrorBoundaryState {
 
 /**
  * Robust ErrorBoundary to catch and handle UI crashes gracefully.
- * Fixed property access errors by using React.Component and explicit type declarations.
+ * Fixed "Property 'props' does not exist" error by extending imported Component directly.
  */
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Explicitly declare state property for TypeScript recognition
-  public state: ErrorBoundaryState = { hasError: false };
-
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
+    this.state = { hasError: false };
   }
   
   static getDerivedStateFromError(_error: any): ErrorBoundaryState { 
@@ -41,7 +39,6 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 
   render() {
-    // Corrected state access for the error boundary
     if (this.state.hasError) {
       return (
         <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#000', color: '#fff', textAlign: 'center', padding: '2rem' }}>
@@ -51,7 +48,6 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
         </div>
       );
     }
-    // Corrected props access for the error boundary
     return this.props.children;
   }
 }
