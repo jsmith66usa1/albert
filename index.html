@@ -33,7 +33,6 @@
             --input-bg: #000000;
             --aside-bg: #050505;
             --accent: #6366f1;
-            /* Explicitly set the main content height to 70% of the viewport */
             --content-h: 70vh;
         }
 
@@ -72,7 +71,6 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 0.5rem;
             z-index: 100;
         }
 
@@ -106,7 +104,7 @@
 
         .main-content {
             height: var(--content-h);
-            flex: 0 0 var(--content-h);
+            flex: 0 0 var(--content-h); /* STRICT: NEVER CHANGE SIZE */
             display: flex;
             flex-direction: column;
             overflow: hidden;
@@ -122,7 +120,7 @@
             background: var(--aside-bg);
             width: 100%;
             height: 40%;
-            flex: 0 0 40%; 
+            flex: 0 0 40%; /* STRICT */
             border-bottom: 1px solid var(--border-color);
             position: relative;
         }
@@ -139,7 +137,7 @@
             background: #000;
             width: 100%;
             height: 60%;
-            flex: 0 0 60%;
+            flex: 0 0 60%; /* STRICT */
             overflow: hidden;
             position: relative;
             display: flex;
@@ -151,14 +149,14 @@
             .chat-sidebar { 
                 width: 30%; 
                 height: 100%; 
-                flex: 0 0 30%;
+                flex: 0 0 30%; /* STRICT */
                 border-bottom: none; 
                 border-right: 1px solid var(--border-color); 
             }
             .chalkboard-area { 
                 width: 70%; 
                 height: 100%; 
-                flex: 0 0 70%;
+                flex: 0 0 70%; /* STRICT */
             }
         }
 
@@ -230,10 +228,12 @@
             background: var(--input-bg);
             color: var(--text-color);
             border-radius: 0.5rem;
-            padding: 0.5rem 0.85rem;
+            padding: 0.65rem 1.1rem; 
             font-weight: 700;
-            font-size: 0.8rem;
+            font-size: 0.95rem; /* Large text as requested */
             transition: all 0.2s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }
 
         button:hover:not(:disabled) {
@@ -308,7 +308,47 @@
             padding: 0.25rem 0;
         }
 
-        /* Responsive Chapter text visibility */
+        .logs-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.9);
+            z-index: 3000;
+            display: flex;
+            flex-direction: column;
+            padding: 2rem;
+        }
+
+        .logs-content {
+            background: #111;
+            border: 1px solid var(--border-color);
+            border-radius: 1rem;
+            flex: 1;
+            overflow-y: auto;
+            padding: 1.5rem;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.85rem;
+        }
+
+        .log-item {
+            padding: 0.5rem 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            display: flex;
+            gap: 1rem;
+        }
+
+        .log-tag {
+            font-weight: 900;
+            font-size: 0.7rem;
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            min-width: 80px;
+            text-align: center;
+        }
+
+        .tag-success { background: #059669; color: white; }
+        .tag-error { background: #dc2626; color: white; }
+        .tag-system { background: #4f46e5; color: white; }
+
         .chapter-btn-label {
             display: inline-block;
         }

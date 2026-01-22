@@ -1,17 +1,19 @@
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Era, Message } from './types';
+import React, { Component, useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Era, Message, LogEntry } from './types';
 import { CHAPTERS } from './constants';
 import { 
   generateEinsteinResponse, 
   generateChalkboardImage, 
   generateEinsteinSpeech,
   decode,
-  decodeAudioData
+  decodeAudioData,
+  getPerformanceLogs,
+  clearPerformanceLogs
 } from './services/geminiService';
 
 interface ErrorBoundaryProps {
-  children: React.ReactNode;
+  children?: React.ReactNode;
 }
 
 interface ErrorBoundaryState {
@@ -19,30 +21,37 @@ interface ErrorBoundaryState {
 }
 
 /**
- * ErrorBoundary component to catch rendering errors.
+ * Robust ErrorBoundary to catch and handle UI crashes gracefully.
+ * Fixed property access errors by using React.Component and explicit type declarations.
  */
-// Fix: Added explicit types to React.Component to resolve 'state', 'props' and 'children' errors
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // Explicitly declare state property for TypeScript recognition
+  public state: ErrorBoundaryState = { hasError: false };
+
   constructor(props: ErrorBoundaryProps) {
     super(props);
-    this.state = { hasError: false };
   }
   
-  static getDerivedStateFromError() { 
+  static getDerivedStateFromError(_error: any): ErrorBoundaryState { 
     return { hasError: true }; 
   }
 
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error("Uncaught error:", error, errorInfo);
+  }
+
   render() {
-    // Fix: access state correctly via this.state
+    // Corrected state access for the error boundary
     if (this.state.hasError) {
       return (
         <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#000', color: '#fff', textAlign: 'center', padding: '2rem' }}>
           <h1 style={{ fontFamily: 'Playfair Display, serif' }}>Ach, ze universe has collapsed!</h1>
-          <button onClick={() => window.location.reload()} style={{ marginTop: '2rem', background: '#6366f1', color: '#fff', padding: '1rem 2rem', borderRadius: '1rem', border: 'none' }}>Re-initialize Laboratory</button>
+          <p style={{ opacity: 0.6, margin: '1rem 0' }}>A quantum glitch has occurred in ze laboratory.</p>
+          <button onClick={() => window.location.reload()} style={{ marginTop: '1rem', background: '#6366f1', color: '#fff', padding: '1rem 2rem', borderRadius: '1rem', border: 'none', fontWeight: 900, cursor: 'pointer' }}>Re-initialize Laboratory</button>
         </div>
       );
     }
-    // Fix: access props correctly via this.props
+    // Corrected props access for the error boundary
     return this.props.children;
   }
 }
@@ -58,8 +67,10 @@ const EinsteinApp: React.FC = () => {
   const [lastImage, setLastImage] = useState<string | null>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isFaqOpen, setIsFaqOpen] = useState(false);
+  const [isLogsOpen, setIsLogsOpen] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
   const [currentlySpeakingId, setCurrentlySpeakingId] = useState<number | null>(null);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
   
   const isWorking = isLoading || isImageLoading;
 
@@ -71,18 +82,33 @@ const EinsteinApp: React.FC = () => {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const faqRef = useRef<HTMLDivElement>(null);
 
-  // Logic to handle "Scroll to Top" of new content
+  const faqItems = useMemo(() => [
+    { label: "Modern Apps", prompt: "How does this apply to today?" },
+    { label: "Great Rivals", prompt: "Who were your rivals?" },
+    { label: "Visual Detail", prompt: "Draw a more detailed diagram." }
+  ], []);
+
+  useEffect(() => {
+    const updateLogs = () => {
+      // Functional state update to prevent stale data issues during fast logging
+      setLogs(() => getPerformanceLogs());
+    };
+    window.addEventListener('performance_log_updated', updateLogs);
+    updateLogs();
+    return () => window.removeEventListener('performance_log_updated', updateLogs);
+  }, []);
+
   useEffect(() => {
     if (messages.length > 0 && !isLoading) {
-      // Small timeout to ensure DOM is ready after rendering new message
-      setTimeout(() => {
+      const scrollTimer = setTimeout(() => {
         if (scrollContainerRef.current) {
           const lastMsg = scrollContainerRef.current.querySelector('.msg-container:last-child');
           if (lastMsg) {
             lastMsg.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }
         }
-      }, 100);
+      }, 150);
+      return () => clearTimeout(scrollTimer);
     }
   }, [messages, isLoading]);
 
@@ -116,23 +142,37 @@ const EinsteinApp: React.FC = () => {
     const thisSessionId = speechSessionId.current;
     setIsSpeechLoading(true);
     setCurrentlySpeakingId(msgId);
+    
     try {
       if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       }
-      if (audioContextRef.current.state === 'suspended') await audioContextRef.current.resume();
+      if (audioContextRef.current.state === 'suspended') {
+        await audioContextRef.current.resume();
+      }
+      
       const base64 = await generateEinsteinSpeech(text);
-      if (thisSessionId !== speechSessionId.current || !base64) return;
+      if (thisSessionId !== speechSessionId.current || !base64) {
+        setIsSpeechLoading(false);
+        return;
+      }
+      
       const buffer = await decodeAudioData(decode(base64), audioContextRef.current, 24000, 1);
+      if (thisSessionId !== speechSessionId.current) return;
+
       setIsSpeechLoading(false);
       setIsAudioPlaying(true);
+      
       const source = audioContextRef.current.createBufferSource();
       source.buffer = buffer;
       source.connect(audioContextRef.current.destination);
+      source.onended = () => { 
+        if (thisSessionId === speechSessionId.current) stopAudio(); 
+      };
       source.start();
       activeSources.current.push(source);
-      source.onended = () => { if (thisSessionId === speechSessionId.current) stopAudio(); };
     } catch (e) {
+      console.error("Speech error:", e);
       if (thisSessionId === speechSessionId.current) stopAudio();
     }
   };
@@ -210,6 +250,37 @@ const EinsteinApp: React.FC = () => {
         </div>
       )}
 
+      {isLogsOpen && (
+        <div className="logs-overlay">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-black uppercase">Laboratory System Logs</h2>
+            <div className="flex gap-2">
+              <button onClick={() => { clearPerformanceLogs(); setLogs([]); }} className="bg-white/10 text-xs py-1">Clear</button>
+              <button onClick={() => setIsLogsOpen(false)} className="bg-red-600 border-none text-white text-xs py-1">Close</button>
+            </div>
+          </div>
+          <div className="logs-content no-scrollbar">
+            {logs.length === 0 ? <p className="opacity-50 italic">No logs recorded yet...</p> : 
+              logs.map((log) => (
+                <div key={log.id} className="log-item">
+                  <span className={`log-tag ${log.status === 'ERROR' ? 'tag-error' : log.status === 'SUCCESS' ? 'tag-success' : 'tag-system'}`}>
+                    {log.type}
+                  </span>
+                  <div className="flex-1">
+                    <div className="flex justify-between">
+                      <span className="font-bold text-indigo-400">{log.label}</span>
+                      <span className="opacity-30 text-[10px]">{new Date(log.timestamp).toLocaleTimeString()}</span>
+                    </div>
+                    <div className="opacity-80 mt-1">{log.message}</div>
+                    {log.duration > 0 && <div className="text-[10px] opacity-40 mt-1">Latency: {log.duration.toFixed(0)}ms</div>}
+                  </div>
+                </div>
+              ))
+            }
+          </div>
+        </div>
+      )}
+
       <header className="header">
         <div className="header-brand">
           <div className="w-7 h-7 rounded-lg bg-[#6366f1] flex items-center justify-center font-black text-[10px]">AE</div>
@@ -218,7 +289,18 @@ const EinsteinApp: React.FC = () => {
         
         <div className="header-controls">
           <button 
-            onPointerDown={(e) => { e.preventDefault(); const last = [...messages].reverse().find(m => m.role === 'einstein'); if(last) playSpeech(last.text, messages.indexOf(last)); }} 
+            onClick={() => setIsLogsOpen(true)}
+            className="text-[10px] bg-white/5 uppercase tracking-widest min-w-[60px]"
+          >
+            Log
+          </button>
+          
+          <button 
+            onPointerDown={(e) => { 
+              e.preventDefault(); 
+              const last = [...messages].reverse().find(m => m.role === 'einstein'); 
+              if(last) playSpeech(last.text, messages.indexOf(last)); 
+            }} 
             disabled={isWorking || messages.length === 0} 
             className={`min-w-[70px] text-[10px] uppercase font-black ${(isAudioPlaying || isSpeechLoading) ? 'bg-red-500 border-red-500' : 'bg-[#6366f1] border-[#6366f1]'}`}
           >
@@ -310,11 +392,7 @@ const EinsteinApp: React.FC = () => {
                 </button>
                 {isFaqOpen && (
                   <div className="absolute z-[120] bottom-full left-0 mb-3 bg-zinc-900 border border-white/10 rounded-xl w-60 p-1 shadow-2xl">
-                    {useMemo(() => [
-                      { label: "Modern Apps", prompt: "How does this apply to today?" },
-                      { label: "Great Rivals", prompt: "Who were your rivals?" },
-                      { label: "Visual Detail", prompt: "Draw a more detailed diagram." }
-                    ], []).map((item, i) => (
+                    {faqItems.map((item, i) => (
                       <div key={i} onClick={() => handleAction(item.prompt)} className="p-3 cursor-pointer rounded-lg text-xs font-bold hover:bg-[#6366f1]">
                         {item.label}
                       </div>
@@ -356,7 +434,6 @@ const EinsteinApp: React.FC = () => {
 };
 
 const App: React.FC = () => (
-  // Fix: Wrapping EinsteinApp correctly as children of ErrorBoundary
   <ErrorBoundary>
     <EinsteinApp />
   </ErrorBoundary>

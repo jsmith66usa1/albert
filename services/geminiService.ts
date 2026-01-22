@@ -15,7 +15,8 @@ const firebaseConfig = {
 };
 
 let performanceLogs: LogEntry[] = [];
-export const getPerformanceLogs = () => performanceLogs;
+export const getPerformanceLogs = () => [...performanceLogs];
+export const clearPerformanceLogs = () => { performanceLogs = []; };
 
 const getErrorLocation = (error: any): string => {
   if (!error || !error.stack) return "unknown location";
@@ -26,12 +27,13 @@ const getErrorLocation = (error: any): string => {
 };
 
 const addLog = (entry: Omit<LogEntry, 'id' | 'timestamp'>) => {
+  const timestamp = Date.now();
   const newLog: LogEntry = {
     ...entry,
-    id: Math.random().toString(36).substr(2, 9),
-    timestamp: Date.now()
+    id: `${timestamp}-${Math.random().toString(36).substr(2, 9)}`,
+    timestamp
   };
-  performanceLogs = [newLog, ...performanceLogs].slice(0, 100);
+  performanceLogs = [newLog, ...performanceLogs].slice(0, 100); // Reduced slice size for stability
   window.dispatchEvent(new CustomEvent('performance_log_updated', { detail: newLog }));
 };
 
@@ -56,11 +58,10 @@ try {
     label: 'Registry Link Severed', 
     duration: 0, 
     status: 'ERROR', 
-    message: `Offline mode: ${e.message} @ ${getErrorLocation(e)}` 
+    message: `Offline mode active.` 
   });
 }
 
-// Fix: Always use the named parameter apiKey for GoogleGenAI initialization
 const getAI = () => {
   return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
@@ -87,13 +88,12 @@ async function getFromCache(category: string, key: string): Promise<any> {
         const val = snapshot.val();
         addLog({ 
           type: 'CACHE_DB', 
-          label: `GLOBAL REGISTRY HIT: ${category}`, 
+          label: `GLOBAL HIT: ${category}`, 
           duration: performance.now() - start, 
           status: 'CACHE_HIT', 
-          message: `Shared knowledge retrieved.`,
-          metadata: { isGlobal: true, key }
+          message: `Retrieved from shared mind.`
         });
-        localStorage.setItem(`discovery_v11_${category}_${key}`, val);
+        try { localStorage.setItem(`discovery_v11_${category}_${key}`, val); } catch(e) {}
         return val;
       }
     } catch (e) {}
@@ -106,8 +106,7 @@ async function getFromCache(category: string, key: string): Promise<any> {
         label: `LOCAL HIT: ${category}`, 
         duration: performance.now() - start, 
         status: 'CACHE_HIT', 
-        message: `Local node retrieval successful.`,
-        metadata: { isGlobal: false, key }
+        message: `Retrieved from local node.`
       });
       return local;
     }
@@ -155,8 +154,7 @@ function mathPhoneticizer(text: string): string {
 }
 
 export async function generateEinsteinResponse(prompt: string, history: { role: string, parts: { text: string }[] }[]): Promise<string> {
-  // Fix: Use 'gemini-3-flash-preview' for general text tasks
-  const model = 'gemini-3-flash-preview';
+  const model = 'gemini-3-pro-preview';
   const systemInstruction = `You are Professor Albert Einstein. 
 Character Guidelines:
 1. VOICE: Maintain a thick, whimsical German accent (e.g., "ze" instead of "the", "vun" for "one", "Ach!", "Vunderbar!").
@@ -179,7 +177,6 @@ Character Guidelines:
   try {
     const ai = getAI();
     const contents = history.concat([{ role: 'user', parts: [{ text: prompt }] }]);
-    // Fix: Using ai.models.generateContent pattern and response.text property
     const response = await ai.models.generateContent({ model, contents, config });
     const textResult = response.text;
     if (textResult) {
@@ -210,7 +207,6 @@ export async function generateChalkboardImage(prompt: string): Promise<string> {
   const start = performance.now();
   try {
     const ai = getAI();
-    // Fix: Using 'gemini-2.5-flash-image' for image generation via generateContent
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
@@ -218,7 +214,6 @@ export async function generateChalkboardImage(prompt: string): Promise<string> {
       },
     });
     let imageData = "";
-    // Fix: Iterating through parts to find inlineData for the generated image
     if (response.candidates?.[0]?.content?.parts) {
       for (const part of response.candidates[0].content.parts) {
         if (part.inlineData) { 
@@ -259,9 +254,9 @@ export async function generateEinsteinSpeech(text: string, retries = 1): Promise
   const ttsPrompt = `Speak as Professor Albert Einstein. Use a whimsical, heavy German accent with warmth and humor: ${optimized}`;
 
   for (let i = 0; i <= retries; i++) {
+    const start = performance.now();
     try {
       const ai = getAI();
-      // Fix: Using 'gemini-2.5-flash-preview-tts' and responseModalities: [Modality.AUDIO]
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
         contents: [{ parts: [{ text: ttsPrompt }] }],
@@ -276,13 +271,20 @@ export async function generateEinsteinSpeech(text: string, retries = 1): Promise
       
       if (base64) {
         await saveToCache('audio', key, base64);
+        addLog({ 
+          type: 'AI_AUDIO', 
+          label: 'VOCAL SYNTHESIS', 
+          duration: performance.now() - start, 
+          status: 'SUCCESS', 
+          message: 'Voice data generated.' 
+        });
         return base64;
       }
       throw new Error("Empty TTS data");
     } catch (e: any) {
       lastError = e;
       if (i < retries) {
-        const delay = 2000 * (i + 1);
+        const delay = 1000;
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
@@ -293,30 +295,48 @@ export async function generateEinsteinSpeech(text: string, retries = 1): Promise
     label: 'VOCAL FAULT', 
     duration: 0, 
     status: 'ERROR', 
-    message: `${lastError?.message || "Quota or service error"}` 
+    message: `${lastError?.message || "Vocal cords temporary offline."}` 
   });
   throw lastError;
 }
 
 export const decode = (base64: string) => {
   try {
-    const b = atob(base64);
-    const bytes = new Uint8Array(b.length);
-    for (let i = 0; i < b.length; i++) bytes[i] = b.charCodeAt(i);
+    const binaryString = atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
     return bytes;
   } catch(e) {
     return new Uint8Array(0);
   }
 };
 
-export const decodeAudioData = async (data: Uint8Array, ctx: AudioContext, sampleRate: number, numChannels: number) => {
+export const decodeAudioData = async (
+  data: Uint8Array, 
+  ctx: AudioContext, 
+  sampleRate: number, 
+  numChannels: number
+): Promise<AudioBuffer> => {
   if (data.length === 0) throw new Error("No audio data to decode");
-  const dataInt16 = new Int16Array(data.buffer);
-  const frameCount = dataInt16.length / numChannels;
+  
+  // Create a safer view and handle byte alignment
+  const arrayBuffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+  const view = new DataView(arrayBuffer);
+  const frameCount = Math.floor(arrayBuffer.byteLength / 2 / numChannels);
   const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
-  for (let ch = 0; ch < numChannels; ch++) {
-    const chData = buffer.getChannelData(ch);
-    for (let i = 0; i < frameCount; i++) chData[i] = dataInt16[i * numChannels + ch] / 32768.0;
+  
+  for (let channel = 0; channel < numChannels; channel++) {
+    const channelData = buffer.getChannelData(channel);
+    for (let i = 0; i < frameCount; i++) {
+      const byteIdx = (i * numChannels + channel) * 2;
+      if (byteIdx + 1 < arrayBuffer.byteLength) {
+        const sample = view.getInt16(byteIdx, true);
+        channelData[i] = sample / 32768.0;
+      }
+    }
   }
   return buffer;
 };
