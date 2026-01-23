@@ -31,8 +31,12 @@ const addLog = (entry: Omit<LogEntry, 'id' | 'timestamp'>) => {
 
 let db: any = null;
 try {
+  // Use existing app or initialize new one
   const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+  
+  // If databaseURL isn't explicitly in config, derive it from project ID for standard Firebase setups
   const dbUrl = firebaseConfig.databaseURL || (firebaseConfig.projectId ? `https://${firebaseConfig.projectId}-default-rtdb.firebaseio.com/` : undefined);
+  
   if (dbUrl) {
     db = getDatabase(app, dbUrl);
     addLog({ 
@@ -40,11 +44,25 @@ try {
       label: 'WORLD BRAIN', 
       duration: 0, 
       status: 'SUCCESS', 
-      message: 'Global synchronization layer active. All laboratory nodes connected.' 
+      message: 'Global synchronization layer active. All laboratory nodes connected to the shared session.' 
+    });
+  } else {
+    addLog({ 
+      type: 'ERROR', 
+      label: 'DB CONFIG', 
+      duration: 0, 
+      status: 'ERROR', 
+      message: 'Firebase Database URL missing. Global sharing disabled.' 
     });
   }
 } catch (e: any) {
-  addLog({ type: 'ERROR', label: 'REGISTRY FAULT', duration: 0, status: 'ERROR', message: 'Operating in local isolation mode.' });
+  addLog({ 
+    type: 'ERROR', 
+    label: 'REGISTRY FAULT', 
+    duration: 0, 
+    status: 'ERROR', 
+    message: `Operating in local isolation mode: ${e.message}` 
+  });
 }
 
 const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -59,7 +77,7 @@ async function generateCacheKey(input: string): Promise<string> {
 async function getFromCache(category: string, key: string, dataType: string): Promise<any> {
   const start = performance.now();
   
-  // 1. Check Global DB (Shared Knowledge)
+  // 1. Check Global DB (Shared Knowledge across all users)
   if (db) {
     try {
       const dbRef = ref(db, `world_brain_v12/${category}/${key}`);
@@ -71,12 +89,15 @@ async function getFromCache(category: string, key: string, dataType: string): Pr
           label: `GLOBAL HIT`, 
           duration: performance.now() - start, 
           status: 'CACHE_HIT', 
-          message: `Retrieved ${dataType} from shared laboratory memory.`
+          message: `Retrieved ${dataType} from the Global World Brain. Reusing discovery from another user.`
         });
+        // Sync to local for offline/faster access
         localStorage.setItem(`discovery_v12_${category}_${key}`, val);
         return val;
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn("Global cache retrieval error", e);
+    }
   }
 
   // 2. Check Local Storage (Node Memory)
@@ -97,12 +118,35 @@ async function getFromCache(category: string, key: string, dataType: string): Pr
 
 async function saveToCache(category: string, key: string, data: string): Promise<void> {
   if (!data || data.length < 5) return;
-  try { localStorage.setItem(`discovery_v12_${category}_${key}`, data); } catch (e) {}
+  
+  const start = performance.now();
+  
+  // Save locally first
+  try { 
+    localStorage.setItem(`discovery_v12_${category}_${key}`, data); 
+  } catch (e) {}
+
+  // Save to Global World Brain (Firebase)
   if (db) {
     try {
       const dbRef = ref(db, `world_brain_v12/${category}/${key}`);
       await set(dbRef, data);
-    } catch (e) {}
+      addLog({ 
+        type: 'CACHE_DB', 
+        label: `GLOBAL PUBLISH`, 
+        duration: performance.now() - start, 
+        status: 'SUCCESS', 
+        message: `Successfully synchronized new ${category} to the Global World Brain for all users.`
+      });
+    } catch (e: any) {
+      addLog({ 
+        type: 'ERROR', 
+        label: 'SYNC ERROR', 
+        duration: 0, 
+        status: 'ERROR', 
+        message: `Failed to publish to Global World Brain: ${e.message}` 
+      });
+    }
   }
 }
 
@@ -127,8 +171,12 @@ function mathPhoneticizer(text: string): string {
 
 export async function generateEinsteinResponse(prompt: string, history: { role: string, parts: { text: string }[] }[]): Promise<string> {
   const systemInstruction = `You are Professor Albert Einstein. Use a whimsical German accent. Use LaTeX for math. Include exactly one [IMAGE: visual description] tag.`;
-  const key = await generateCacheKey(JSON.stringify({ history, prompt, systemInstruction }));
   
+  // Normalize history for cache key generation to ensure shared state
+  const cacheInput = JSON.stringify({ history, prompt, systemInstruction });
+  const key = await generateCacheKey(cacheInput);
+  
+  // Check if someone else in the world has already asked this
   const cached = await getFromCache('responses', key, 'TEXT');
   if (cached) return cached;
 
@@ -136,18 +184,25 @@ export async function generateEinsteinResponse(prompt: string, history: { role: 
   try {
     const ai = getAI();
     const contents = history.concat([{ role: 'user', parts: [{ text: prompt }] }]);
+    
+    addLog({ type: 'SYSTEM', label: 'AI THINKING', duration: 0, status: 'SUCCESS', message: 'Synthesizing new discovery with Gemini 3 Pro...' });
+    
     const response = await ai.models.generateContent({ 
       model: 'gemini-3-pro-preview', 
       contents, 
       config: { systemInstruction, temperature: 0.85 } 
     });
+    
     const result = response.text || "Ach, ze stars are blurry.";
+    
+    // Save to global brain for all users
     await saveToCache('responses', key, result);
-    addLog({ type: 'AI_TEXT', label: 'SYNTHESIS', duration: performance.now() - start, status: 'SUCCESS', message: 'New thought synthesized and shared globally.' });
+    
+    addLog({ type: 'AI_TEXT', label: 'SYNTHESIS', duration: performance.now() - start, status: 'SUCCESS', message: 'New thought synthesized and published globally.' });
     return result;
   } catch (e: any) {
-    addLog({ type: 'ERROR', label: 'AI FAULT', duration: 0, status: 'ERROR', message: e.message });
-    return "Ach, my brain is a bit messy today.";
+    addLog({ type: 'ERROR', label: 'AI FAULT', duration: 0, status: 'ERROR', message: `Einstein is confused: ${e.message}` });
+    return "Ach, my brain is a bit messy today. Ze quantum fluctuations are too high.";
   }
 }
 
@@ -177,7 +232,7 @@ export async function generateChalkboardImage(prompt: string): Promise<string> {
       addLog({ type: 'AI_IMAGE', label: 'CHALK SKETCH', duration: performance.now() - start, status: 'SUCCESS', message: 'New diagram rendered and synced globally.' });
       return imageData;
     }
-    throw new Error("No pixel data.");
+    throw new Error("No pixel data returned from laboratory.");
   } catch (e: any) {
     addLog({ type: 'ERROR', label: 'SKETCH FAULT', duration: 0, status: 'ERROR', message: e.message });
     throw e;
@@ -189,6 +244,8 @@ export async function generateEinsteinSpeech(text: string): Promise<string> {
   if (!optimized) return "";
   const key = await generateCacheKey(optimized);
 
+  // Audio is bulky, keep it local to current node for now to save DB costs, 
+  // but use global response text logic above to ensure same text is voiced.
   const cached = localStorage.getItem(`discovery_v12_audio_${key}`);
   if (cached) return cached;
 
@@ -209,7 +266,7 @@ export async function generateEinsteinSpeech(text: string): Promise<string> {
       addLog({ type: 'AI_AUDIO', label: 'VOCAL SYNTH', duration: performance.now() - start, status: 'SUCCESS', message: 'Speech articulated locally.' });
       return base64;
     }
-    throw new Error("Mute response.");
+    throw new Error("Mute response from vocal laboratory.");
   } catch (e: any) {
     addLog({ type: 'ERROR', label: 'VOCAL FAULT', duration: 0, status: 'ERROR', message: e.message });
     throw e;
