@@ -12,26 +12,24 @@ import {
   clearPerformanceLogs
 } from './services/geminiService';
 
-interface ErrorBoundaryProps {
-  children?: React.ReactNode;
-}
+interface ErrorBoundaryProps { children?: React.ReactNode; }
+interface ErrorBoundaryState { hasError: boolean; }
 
-interface ErrorBoundaryState {
-  hasError: boolean;
-}
-
-/**
- * Robust ErrorBoundary to catch and handle UI crashes gracefully.
- * Updated to use React.Component with explicit generic types to resolve TS property errors.
- */
+// Fixed: Explicitly declaring state and props as properties to resolve "Property 'state/props' does not exist" errors in some TS configurations.
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // Explicitly declare state property for TypeScript
+  state: ErrorBoundaryState = { hasError: false };
+  // Fixed: Explicitly declare props property for TypeScript to resolve error on line 45
+  props: ErrorBoundaryProps;
+
   constructor(props: ErrorBoundaryProps) {
     super(props);
-    this.state = { hasError: false };
+    // Fixed: Initialize props explicitly to satisfy compiler checks in strict environments
+    this.props = props;
   }
-  
-  static getDerivedStateFromError(_error: any): ErrorBoundaryState { 
-    return { hasError: true }; 
+
+  static getDerivedStateFromError(_error: any): ErrorBoundaryState {
+    return { hasError: true };
   }
 
   componentDidCatch(error: any, errorInfo: any) {
@@ -39,16 +37,16 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 
   render() {
-    // Accessing state and props via React.Component properties
+    // Correctly accessing state and props which are now properly typed
     if (this.state.hasError) {
       return (
         <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#000', color: '#fff', textAlign: 'center', padding: '2rem' }}>
           <h1 style={{ fontFamily: 'Playfair Display, serif' }}>Ach, ze universe has collapsed!</h1>
-          <p style={{ opacity: 0.6, margin: '1rem 0' }}>A quantum glitch has occurred in ze laboratory.</p>
           <button onClick={() => window.location.reload()} style={{ marginTop: '1rem', background: '#6366f1', color: '#fff', padding: '1rem 2rem', borderRadius: '1rem', border: 'none', fontWeight: 900, cursor: 'pointer' }}>Re-initialize Laboratory</button>
         </div>
       );
     }
+    // Fixed: this.props.children is now correctly typed and recognized by the compiler
     return this.props.children;
   }
 }
@@ -69,15 +67,11 @@ const EinsteinApp: React.FC = () => {
   const [currentlySpeakingId, setCurrentlySpeakingId] = useState<number | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   
-  const isWorking = isLoading || isImageLoading;
-
   const audioContextRef = useRef<AudioContext | null>(null);
   const activeSources = useRef<AudioBufferSourceNode[]>([]);
   const speechSessionId = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const faqRef = useRef<HTMLDivElement>(null);
 
   const faqItems = useMemo(() => [
     { label: "Modern Apps", prompt: "How does this apply to today?" },
@@ -86,38 +80,21 @@ const EinsteinApp: React.FC = () => {
   ], []);
 
   useEffect(() => {
-    const updateLogs = () => {
-      // Functional state update to prevent stale data issues during fast logging
-      setLogs(() => getPerformanceLogs());
-    };
+    const updateLogs = () => setLogs(() => getPerformanceLogs());
     window.addEventListener('performance_log_updated', updateLogs);
     updateLogs();
     return () => window.removeEventListener('performance_log_updated', updateLogs);
   }, []);
 
   useEffect(() => {
-    if (messages.length > 0 && !isLoading) {
-      const scrollTimer = setTimeout(() => {
-        if (scrollContainerRef.current) {
-          const lastMsg = scrollContainerRef.current.querySelector('.msg-container:last-child');
-          if (lastMsg) {
-            lastMsg.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          }
-        }
-      }, 150);
-      return () => clearTimeout(scrollTimer);
-    }
-  }, [messages, isLoading]);
-
-  useEffect(() => {
-    const triggerMath = () => {
-      if ((window as any).MathJax && (window as any).MathJax.typesetPromise) {
-        (window as any).MathJax.typesetPromise().catch(() => {});
+    if (messages.length > 0 && !isLoading && scrollContainerRef.current) {
+      // Find the last message and scroll it to the top of the container
+      const lastMsg = scrollContainerRef.current.querySelector('.msg-container:last-child');
+      if (lastMsg) {
+        lastMsg.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
-    };
-    triggerMath();
-    const timer = setTimeout(triggerMath, 400);
-    return () => clearTimeout(timer);
+    }
+    if ((window as any).MathJax?.typesetPromise) (window as any).MathJax.typesetPromise().catch(() => {});
   }, [messages, isLoading]);
 
   const stopAudio = useCallback(() => {
@@ -130,52 +107,65 @@ const EinsteinApp: React.FC = () => {
   }, []);
 
   const playSpeech = async (text: string, msgId: number) => {
-    if (isWorking) return; 
+    if (isLoading || isImageLoading) return; 
     if (currentlySpeakingId === msgId && (isAudioPlaying || isSpeechLoading)) {
       stopAudio();
       return;
     }
     stopAudio();
-    const thisSessionId = speechSessionId.current;
-    setIsSpeechLoading(true);
+    const currentSession = speechSessionId.current;
     setCurrentlySpeakingId(msgId);
+    
+    // Chunking text by logical paragraph breaks to ensure full completion
+    const paragraphs = text.replace(/\[IMAGE:.*?\]/g, '').split(/\n\n+/).filter(p => p.trim().length > 0);
     
     try {
       if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       }
-      if (audioContextRef.current.state === 'suspended') {
-        await audioContextRef.current.resume();
-      }
+      if (audioContextRef.current.state === 'suspended') await audioContextRef.current.resume();
       
-      const base64 = await generateEinsteinSpeech(text);
-      if (thisSessionId !== speechSessionId.current || !base64) {
-        setIsSpeechLoading(false);
-        return;
-      }
-      
-      const buffer = await decodeAudioData(decode(base64), audioContextRef.current, 24000, 1);
-      if (thisSessionId !== speechSessionId.current) return;
+      for (const p of paragraphs) {
+        if (currentSession !== speechSessionId.current) break;
+        setIsSpeechLoading(true);
+        const base64 = await generateEinsteinSpeech(p);
+        if (currentSession !== speechSessionId.current || !base64) break;
+        
+        const buffer = await decodeAudioData(decode(base64), audioContextRef.current, 24000, 1);
+        if (currentSession !== speechSessionId.current) break;
 
-      setIsSpeechLoading(false);
-      setIsAudioPlaying(true);
-      
-      const source = audioContextRef.current.createBufferSource();
-      source.buffer = buffer;
-      source.connect(audioContextRef.current.destination);
-      source.onended = () => { 
-        if (thisSessionId === speechSessionId.current) stopAudio(); 
-      };
-      source.start();
-      activeSources.current.push(source);
+        setIsSpeechLoading(false);
+        setIsAudioPlaying(true);
+        
+        await new Promise<void>((resolve) => {
+          if (currentSession !== speechSessionId.current) return resolve();
+          const source = audioContextRef.current!.createBufferSource();
+          source.buffer = buffer;
+          source.connect(audioContextRef.current!.destination);
+          source.onended = () => {
+            activeSources.current = activeSources.current.filter(s => s !== source);
+            resolve();
+          };
+          source.start();
+          activeSources.current.push(source);
+          const checker = setInterval(() => {
+            if (currentSession !== speechSessionId.current) {
+              clearInterval(checker);
+              try { source.stop(); } catch(e) {}
+              resolve();
+            }
+          }, 50);
+        });
+      }
+      if (currentSession === speechSessionId.current) stopAudio();
     } catch (e) {
-      console.error("Speech error:", e);
-      if (thisSessionId === speechSessionId.current) stopAudio();
+      console.error("Narration fault:", e);
+      if (currentSession === speechSessionId.current) stopAudio();
     }
   };
 
   const handleAction = async (promptText: string, eraToSet?: Era, isNewEra: boolean = false) => {
-    if (isWorking) return; 
+    if (isLoading || isImageLoading) return; 
     if (abortControllerRef.current) abortControllerRef.current.abort();
     abortControllerRef.current = new AbortController();
     const signal = abortControllerRef.current.signal;
@@ -185,12 +175,8 @@ const EinsteinApp: React.FC = () => {
     setIsDropdownOpen(false);
     stopAudio();
 
-    if (isNewEra) {
-        setMessages([]);
-        setLastImage(null);
-    } else {
-        setMessages(prev => [...prev, { role: 'user', text: promptText, timestamp: Date.now() }]);
-    }
+    if (isNewEra) { setMessages([]); setLastImage(null); } 
+    else { setMessages(prev => [...prev, { role: 'user', text: promptText, timestamp: Date.now() }]); }
 
     const history = isNewEra ? [] : [...messages].map(m => ({
       role: m.role === 'einstein' ? 'model' : 'user',
@@ -201,7 +187,7 @@ const EinsteinApp: React.FC = () => {
       const responseText = await generateEinsteinResponse(promptText, history);
       if (signal.aborted) return;
       
-      const safeResponse = responseText || "Ach, ze universe is shy today.";
+      const safeResponse = responseText || "Ach, ze stars are shy.";
       const imageMatch = safeResponse.match(/\[IMAGE: (.*?)\]/);
       
       setMessages(prev => [...prev, { role: 'einstein', text: safeResponse, timestamp: Date.now() }]);
@@ -216,15 +202,10 @@ const EinsteinApp: React.FC = () => {
           if (!signal.aborted) setIsImageLoading(false);
         }
       }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      if (!signal.aborted) setIsLoading(false);
-    }
+    } catch (err) { console.error(err); } finally { if (!signal.aborted) setIsLoading(false); }
   };
 
   const startEra = (era: Era) => {
-    if (isWorking) return;
     const chapter = CHAPTERS.find(c => c.id === era);
     if (chapter) handleAction(chapter.prompt, era, true);
   };
@@ -237,39 +218,31 @@ const EinsteinApp: React.FC = () => {
             <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Albert_Einstein_Head.jpg/480px-Albert_Einstein_Head.jpg" alt="Einstein" className="w-full h-full object-cover" />
           </div>
           <h1 className="serif text-4xl md:text-6xl font-black mb-3">Einstein's Universe</h1>
-          <p className="serif text-lg md:text-xl opacity-60 italic mb-10">Explore the logic of ze stars.</p>
-          <button 
-            className="font-black tracking-[0.2em] border-2 border-white px-10 py-4 rounded-full hover:bg-white hover:text-black transition-all text-lg uppercase"
-            onClick={() => { setHasStarted(true); startEra(Era.Introduction); }}
-          >
-            Enter Laboratory
-          </button>
+          <p className="serif text-lg md:text-xl opacity-60 italic mb-10">Collective logic of ze stars.</p>
+          <button className="font-black border-2 border-white px-10 py-4 rounded-full hover:bg-white hover:text-black transition-all uppercase" onClick={() => { setHasStarted(true); startEra(Era.Introduction); }}>Enter Laboratory</button>
         </div>
       )}
 
       {isLogsOpen && (
         <div className="logs-overlay">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-black uppercase">Laboratory System Logs</h2>
+            <h2 className="text-xl font-black uppercase">World Brain Registry</h2>
             <div className="flex gap-2">
-              <button onClick={() => { clearPerformanceLogs(); setLogs([]); }} className="bg-white/10 text-xs py-1">Clear</button>
-              <button onClick={() => setIsLogsOpen(false)} className="bg-red-600 border-none text-white text-xs py-1">Close</button>
+              <button onClick={() => { clearPerformanceLogs(); setLogs([]); }} className="text-xs py-1">Flush</button>
+              <button onClick={() => setIsLogsOpen(false)} className="bg-red-600 text-xs py-1">Close</button>
             </div>
           </div>
           <div className="logs-content no-scrollbar">
-            {logs.length === 0 ? <p className="opacity-50 italic">No logs recorded yet...</p> : 
+            {logs.length === 0 ? <p className="opacity-50 italic">Waiting for cosmic data...</p> : 
               logs.map((log) => (
                 <div key={log.id} className="log-item">
-                  <span className={`log-tag ${log.status === 'ERROR' ? 'tag-error' : log.status === 'SUCCESS' ? 'tag-success' : 'tag-system'}`}>
-                    {log.type}
-                  </span>
+                  <span className={`log-tag ${log.status === 'CACHE_HIT' ? 'tag-cache' : log.status === 'ERROR' ? 'tag-error' : 'tag-system'}`}>{log.label}</span>
                   <div className="flex-1">
-                    <div className="flex justify-between">
-                      <span className="font-bold text-indigo-400">{log.label}</span>
+                    <div className="flex justify-between font-bold text-indigo-400">
+                      <span>{log.message}</span>
                       <span className="opacity-30 text-[10px]">{new Date(log.timestamp).toLocaleTimeString()}</span>
                     </div>
-                    <div className="opacity-80 mt-1">{log.message}</div>
-                    {log.duration > 0 && <div className="text-[10px] opacity-40 mt-1">Latency: {log.duration.toFixed(0)}ms</div>}
+                    {log.duration > 0 && <div className="text-[10px] opacity-40 mt-1">Registry Latency: {log.duration.toFixed(0)}ms</div>}
                   </div>
                 </div>
               ))
@@ -283,40 +256,22 @@ const EinsteinApp: React.FC = () => {
           <div className="w-7 h-7 rounded-lg bg-[#6366f1] flex items-center justify-center font-black text-[10px]">AE</div>
           <span className="serif font-black text-base">Einstein</span>
         </div>
-        
         <div className="header-controls">
+          <button onClick={() => setIsLogsOpen(true)} className="text-[10px] uppercase min-w-[60px]">Logs</button>
           <button 
-            onClick={() => setIsLogsOpen(true)}
-            className="text-[10px] bg-white/5 uppercase tracking-widest min-w-[60px]"
+            onClick={() => { const last = [...messages].reverse().find(m => m.role === 'einstein'); if(last) playSpeech(last.text, messages.indexOf(last)); }} 
+            disabled={isLoading || messages.length === 0} 
+            className={`min-w-[70px] text-[10px] uppercase font-black ${(isAudioPlaying || isSpeechLoading) ? 'bg-red-500' : 'bg-[#6366f1]'}`}
           >
-            Log
+            {isSpeechLoading ? 'Thinking...' : isAudioPlaying ? 'Stop' : 'Listen'}
           </button>
-          
-          <button 
-            onPointerDown={(e) => { 
-              e.preventDefault(); 
-              const last = [...messages].reverse().find(m => m.role === 'einstein'); 
-              if(last) playSpeech(last.text, messages.indexOf(last)); 
-            }} 
-            disabled={isWorking || messages.length === 0} 
-            className={`min-w-[70px] text-[10px] uppercase font-black ${(isAudioPlaying || isSpeechLoading) ? 'bg-red-500 border-red-500' : 'bg-[#6366f1] border-[#6366f1]'}`}
-          >
-            {isSpeechLoading ? 'Wait...' : isAudioPlaying ? 'Stop' : 'Listen'}
-          </button>
-          
-          <div className="relative" ref={dropdownRef}>
-            <button 
-                onClick={() => !isWorking && setIsDropdownOpen(!isDropdownOpen)} 
-                disabled={isWorking}
-                className="text-[10px] bg-white/5 uppercase tracking-widest min-w-[120px] text-left overflow-hidden text-ellipsis whitespace-nowrap"
-            >
+          <div className="relative">
+            <button onClick={() => !isLoading && setIsDropdownOpen(!isDropdownOpen)} disabled={isLoading} className="text-[10px] bg-white/5 uppercase min-w-[120px] text-left">
               <span className="chapter-btn-label">{currentEra}</span> ▾
             </button>
             {isDropdownOpen && (
               <div className="absolute z-[110] top-full right-0 mt-2 bg-zinc-900 border border-white/10 rounded-xl w-60 overflow-hidden shadow-2xl">
-                {CHAPTERS.map(ch => (
-                  <div key={ch.id} onClick={() => startEra(ch.id)} className={`p-3 cursor-pointer text-xs font-bold ${currentEra === ch.id ? 'bg-[#6366f1]' : 'hover:bg-white/5'}`}>{ch.id}</div>
-                ))}
+                {CHAPTERS.map(ch => <div key={ch.id} onClick={() => startEra(ch.id)} className={`p-3 cursor-pointer text-xs font-bold ${currentEra === ch.id ? 'bg-[#6366f1]' : 'hover:bg-white/5'}`}>{ch.id}</div>)}
               </div>
             )}
           </div>
@@ -326,45 +281,23 @@ const EinsteinApp: React.FC = () => {
       <div className="main-content">
         <section className="chat-sidebar">
           <div className="chat-scroll-container no-scrollbar" ref={scrollContainerRef}>
-            <div className="flex flex-col">
-              {messages.map((msg, idx) => (
-                <div key={idx} className={`msg-container ${msg.role === 'einstein' ? 'bg-einstein' : 'bg-user'}`}>
-                  <div>{msg.text.replace(/\[IMAGE:.*?\]/g, '')}</div>
-                  {msg.role === 'einstein' && (
-                    <div 
-                      onClick={() => !isWorking && playSpeech(msg.text, idx)}
-                      className={`text-[9px] mt-2 opacity-50 font-black uppercase tracking-widest cursor-pointer hover:opacity-100 flex items-center gap-1 ${isWorking ? 'pointer-events-none opacity-20' : ''}`}
-                    >
-                      <span className={currentlySpeakingId === idx ? 'animate-pulse text-red-400' : ''}>
-                        {currentlySpeakingId === idx ? '● Speaking...' : '▶ Read Aloud'}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              ))}
-              {isLoading && (
-                <div className="opacity-40 text-xs italic mb-4 animate-pulse px-2 border-l-2 border-indigo-500">Pondering ze universe...</div>
-              )}
-            </div>
+            {messages.map((msg, idx) => (
+              <div key={idx} className={`msg-container ${msg.role === 'einstein' ? 'bg-einstein' : 'bg-user'}`}>
+                <div>{msg.text.replace(/\[IMAGE:.*?\]/g, '')}</div>
+                {msg.role === 'einstein' && (
+                  <div onClick={() => !isLoading && playSpeech(msg.text, idx)} className={`text-[9px] mt-2 font-black uppercase tracking-widest cursor-pointer hover:opacity-100 flex items-center gap-1 ${currentlySpeakingId === idx ? 'text-red-400' : 'opacity-50'}`}>
+                    {currentlySpeakingId === idx ? '● Narrating...' : '▶ Read Thoughts'}
+                  </div>
+                )}
+              </div>
+            ))}
+            {isLoading && <div className="opacity-40 text-xs italic animate-pulse">Pondering ze universe...</div>}
           </div>
         </section>
-        
         <section className="chalkboard-area">
           <div className="chalkboard-visual-container">
-            {isImageLoading && (
-              <div className="loader-overlay">
-                <div className="text-3xl mb-2 animate-bounce">✍️</div>
-                <div className="opacity-40 font-black text-[10px] uppercase tracking-widest">Sketching...</div>
-              </div>
-            )}
-            {lastImage ? (
-              <img src={lastImage} className="chalkboard-filter" alt="Diagram" />
-            ) : !isImageLoading && (
-              <div className="opacity-10 flex flex-col items-center">
-                 <div className="text-5xl mb-3">📓</div>
-                 <div className="text-[10px] font-bold uppercase tracking-widest">Laboratory Log</div>
-              </div>
-            )}
+            {isImageLoading && <div className="loader-overlay"><div className="text-3xl mb-2 animate-bounce">✍️</div><div className="opacity-40 font-black text-[10px] uppercase">Sketching...</div></div>}
+            {lastImage ? <img src={lastImage} className="chalkboard-filter" alt="Diagram" /> : !isImageLoading && <div className="opacity-10 text-5xl">📓</div>}
           </div>
         </section>
       </div>
@@ -372,57 +305,20 @@ const EinsteinApp: React.FC = () => {
       <footer className="footer">
         <div className="max-w-3xl mx-auto w-full">
           <div className="scroll-row no-scrollbar">
-            <button 
-                onClick={() => handleAction(`Professor, show me the deeper mathematics.`)} 
-                disabled={isWorking} 
-                className="text-[10px] bg-white/5 rounded-full px-5 py-2"
-            >
-                Deeper Math
-            </button>
-            <div className="relative" ref={faqRef}>
-                <button 
-                    onClick={() => !isWorking && setIsFaqOpen(!isFaqOpen)} 
-                    disabled={isWorking} 
-                    className="text-[10px] bg-white/5 rounded-full px-5 py-2"
-                >
-                    Archive ▾
-                </button>
-                {isFaqOpen && (
-                  <div className="absolute z-[120] bottom-full left-0 mb-3 bg-zinc-900 border border-white/10 rounded-xl w-60 p-1 shadow-2xl">
-                    {faqItems.map((item, i) => (
-                      <div key={i} onClick={() => handleAction(item.prompt)} className="p-3 cursor-pointer rounded-lg text-xs font-bold hover:bg-[#6366f1]">
-                        {item.label}
-                      </div>
-                    ))}
-                  </div>
-                )}
+            <button onClick={() => handleAction(`Professor, show me the deeper mathematics.`)} disabled={isLoading} className="text-[10px] bg-white/5 rounded-full px-5 py-2">Deeper Math</button>
+            <div className="relative">
+              <button onClick={() => !isLoading && setIsFaqOpen(!isFaqOpen)} disabled={isLoading} className="text-[10px] bg-white/5 rounded-full px-5 py-2">Archive ▾</button>
+              {isFaqOpen && (
+                <div className="absolute z-[120] bottom-full left-0 mb-3 bg-zinc-900 border border-white/10 rounded-xl w-60 p-1 shadow-2xl">
+                  {faqItems.map((item, i) => <div key={i} onClick={() => handleAction(item.prompt)} className="p-3 cursor-pointer rounded-lg text-xs font-bold hover:bg-[#6366f1]">{item.label}</div>)}
+                </div>
+              )}
             </div>
-            <button 
-                onClick={() => { const idx = CHAPTERS.findIndex(c => c.id === currentEra); if (idx < CHAPTERS.length - 1) startEra(CHAPTERS[idx+1].id); }} 
-                disabled={currentEra === Era.Unified || isWorking} 
-                className="text-[10px] bg-white/5 rounded-full px-5 py-2"
-            >
-                Next Era
-            </button>
+            <button onClick={() => { const idx = CHAPTERS.findIndex(c => c.id === currentEra); if (idx < CHAPTERS.length - 1) startEra(CHAPTERS[idx+1].id); }} disabled={currentEra === Era.Unified || isLoading} className="text-[10px] bg-white/5 rounded-full px-5 py-2">Next Era</button>
           </div>
-          <form 
-            onSubmit={(e) => { e.preventDefault(); if(userInput.trim() && !isWorking) { const t = userInput; setUserInput(''); handleAction(t); }}} 
-            className="input-row mt-3"
-          >
-            <input 
-              type="text" 
-              value={userInput} 
-              onChange={(e) => setUserInput(e.target.value)} 
-              disabled={isWorking} 
-              placeholder="Query the Professor..." 
-            />
-            <button 
-              type="submit" 
-              disabled={isWorking || !userInput.trim()} 
-              className="bg-[#6366f1] border-none px-6 py-3 rounded-xl text-[10px] font-black uppercase whitespace-nowrap"
-            >
-              Send
-            </button>
+          <form onSubmit={(e) => { e.preventDefault(); if(userInput.trim() && !isLoading) { const t = userInput; setUserInput(''); handleAction(t); }}} className="input-row mt-3">
+            <input type="text" value={userInput} onChange={(e) => setUserInput(e.target.value)} disabled={isLoading} placeholder="Ask ze Professor..." />
+            <button type="submit" disabled={isLoading || !userInput.trim()} className="bg-[#6366f1] px-6 py-3 rounded-xl text-[10px] font-black uppercase">Send</button>
           </form>
         </div>
       </footer>
@@ -430,10 +326,4 @@ const EinsteinApp: React.FC = () => {
   );
 };
 
-const App: React.FC = () => (
-  <ErrorBoundary>
-    <EinsteinApp />
-  </ErrorBoundary>
-);
-
-export default App;
+export default function App() { return <ErrorBoundary><EinsteinApp /></ErrorBoundary>; }
