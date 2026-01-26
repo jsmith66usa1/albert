@@ -68,16 +68,24 @@ const getFirebaseConfig = (addLogFn: (entry: any) => void) => {
     message: `Probe Results (Source Map): ${Object.entries(results).map(([k,v]) => `${k}=${v}`).join(' | ')}`
   });
 
-  // BEST PRACTICES & TROUBLESHOOTING GUIDE (As requested by the user)
+  // VITE ARCHITECTURAL & SECURITY GUIDE (New requested insights)
   addLogFn({
     type: 'SYSTEM',
     label: 'FIX GUIDE',
     duration: 0,
     status: 'SUCCESS',
-    message: `COSMIC DIAGNOSTIC ADVICE: 
-1. SECURE MANAGEMENT: In Vite, ensure variables are prefixed with VITE_. Use .env.local for secrets and NEVER commit them. In production (Vercel/Netlify), inject secrets via the platform UI, not files. 
-2. ANOMALY RESOLUTION (API_KEY=PROCESS_ENV->API_KEY): This occurs when your build tool fails to interpolate the variable. Fix by ensuring the variable is defined BEFORE the build starts and that you are using 'import.meta.env' for Vite or 'process.env' for Webpack consistently. 
-3. ADVANCED TROUBLESHOOTING: If initialization fails, check the 'Network' tab for 403 errors (API Restrictions). Verify that the Firebase Config object strictly matches your Google Cloud Project settings.`
+    message: `VITE ARCHITECTURAL INSIGHTS & BEST PRACTICES: 
+
+1. ARCHITECTURAL RATIONALE: Vite uses static replacement via 'import.meta.env'. Unlike Webpack's runtime 'process.env' polyfills, Vite replaces these strings during the build process to maintain ESM-native performance and allow for aggressive tree-shaking.
+
+2. SECURITY & THE VITE_ PREFIX: The 'VITE_' prefix is a critical security boundary. Vite explicitly ignores any variable NOT prefixed with 'VITE_' to prevent accidental leaking of sensitive OS-level environment variables (like PATH or database passwords) into the client-side JavaScript bundle.
+
+3. SENSITIVE CONFIG MANAGEMENT: 
+   - Local: Use '.env.local' for secrets; never commit it to source control.
+   - Development: Use '.env.development' for public-facing dev endpoints.
+   - Production: Inject secrets via the CI/CD platform (Vercel, Netlify, GCP Secret Manager). This ensures variables are statically replaced in the final build artifact without being stored in the repository.
+
+4. TROUBLESHOOTING ANOMALIES: If you see 'API_KEY=PROCESS_ENV->API_KEY', it means the build tool is passing a string literal instead of the value. Ensure your build environment (Node/Shell) has the variable exported correctly BEFORE 'npm run build' is executed.`
   });
 
   // Extract raw values
@@ -109,7 +117,7 @@ const getFirebaseConfig = (addLogFn: (entry: any) => void) => {
       label: 'REGISTRY FAIL', 
       duration: 0, 
       status: 'ERROR', 
-      message: `Critical Error: Missing Project ID or DB URL. Please review the 'FIX GUIDE' above for resolution steps.`
+      message: `Critical Error: Missing Project ID or DB URL. World Brain synchronization is offline. Review the 'FIX GUIDE' for architectural resolution.`
     });
   }
 
