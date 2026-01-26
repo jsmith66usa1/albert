@@ -68,6 +68,18 @@ const getFirebaseConfig = (addLogFn: (entry: any) => void) => {
     message: `Probe Results (Source Map): ${Object.entries(results).map(([k,v]) => `${k}=${v}`).join(' | ')}`
   });
 
+  // BEST PRACTICES & TROUBLESHOOTING GUIDE (As requested by the user)
+  addLogFn({
+    type: 'SYSTEM',
+    label: 'FIX GUIDE',
+    duration: 0,
+    status: 'SUCCESS',
+    message: `COSMIC DIAGNOSTIC ADVICE: 
+1. SECURE MANAGEMENT: In Vite, ensure variables are prefixed with VITE_. Use .env.local for secrets and NEVER commit them. In production (Vercel/Netlify), inject secrets via the platform UI, not files. 
+2. ANOMALY RESOLUTION (API_KEY=PROCESS_ENV->API_KEY): This occurs when your build tool fails to interpolate the variable. Fix by ensuring the variable is defined BEFORE the build starts and that you are using 'import.meta.env' for Vite or 'process.env' for Webpack consistently. 
+3. ADVANCED TROUBLESHOOTING: If initialization fails, check the 'Network' tab for 403 errors (API Restrictions). Verify that the Firebase Config object strictly matches your Google Cloud Project settings.`
+  });
+
   // Extract raw values
   const rawId = probe('PROJECT_ID') || probe('GCP_PROJECT') || probe('GOOGLE_CLOUD_PROJECT') || probe('PROJECTID');
   const rawDb = probe('DATABASE_URL') || probe('DB_URL') || probe('DATABASEURL');
@@ -90,14 +102,14 @@ const getFirebaseConfig = (addLogFn: (entry: any) => void) => {
     addLogFn({ type: 'SYSTEM', label: 'SYNTHESIS', duration: 0, status: 'SUCCESS', message: `Synthesized DB URL from Project ID [${projectId}].` });
   }
 
-  // If critical config is still missing, log the Problem Statement Fix Guide
+  // Final validation log
   if (!projectId || !databaseURL) {
     addLogFn({ 
       type: 'ERROR', 
       label: 'REGISTRY FAIL', 
       duration: 0, 
       status: 'ERROR', 
-      message: `Registry Resolution Failed: Missing Project ID or DB URL. Primary Causes: (1) Naming Mismatch: ensure VITE_ or REACT_APP_ prefixes. (2) Missing .env file. (3) Cache issues.`
+      message: `Critical Error: Missing Project ID or DB URL. Please review the 'FIX GUIDE' above for resolution steps.`
     });
   }
 
@@ -114,15 +126,6 @@ const getFirebaseConfig = (addLogFn: (entry: any) => void) => {
 
 let db: any = null;
 const firebaseConfig = getFirebaseConfig(addLog);
-
-// User's specific inquiry for the logs
-addLog({
-  type: 'SYSTEM',
-  label: 'DEBUG INQUIRY',
-  duration: 0,
-  status: 'SUCCESS',
-  message: `Diagnostic Request: Could you please share the detailed trace from your World Brain Registry (Logs), specifically the "Source Map" diagnostic information provided by Cosmic Fingerprint v2? I'm looking for the exact output that shows which environment source (Vite, Process, Window, or Meta) provided each piece of data, or clearly states "NOT_FOUND" for each key.`
-});
 
 // Initialize Global Synchronization Layer
 try {
@@ -142,7 +145,7 @@ try {
       label: 'WORLD BRAIN', 
       duration: 0, 
       status: 'SUCCESS', 
-      message: `Sync Layer in Local Mode: Using in-memory storage only. Please check environment variables if global sync is required.` 
+      message: `Sync Layer in Local Mode: Shared caching disabled due to registry resolution status.` 
     });
   }
 } catch (e: any) {
