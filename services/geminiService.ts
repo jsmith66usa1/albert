@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, Modality } from "@google/genai";
+import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getDatabase, ref, get, set } from "firebase/database";
 import { LogEntry } from "../types";
@@ -25,16 +25,20 @@ const addLog = (entry: Omit<LogEntry, 'id' | 'timestamp'>) => {
  * Probes memory sources directly and uses heuristics to fill missing configuration.
  */
 const getFirebaseConfig = (addLogFn: (entry: any) => void) => {
+  // Vite-specific environment access
+  const viteEnv = (import.meta as any).env || {};
+  // Node-style environment access (fallback)
+  const procEnv = (typeof process !== 'undefined' && process.env) ? process.env : {};
+  
   const sources = [
-    { name: 'VITE_ENV', data: (import.meta as any).env || {} },
-    { name: 'PROCESS_ENV', data: (typeof process !== 'undefined' && process.env) ? process.env : {} },
-    { name: 'WINDOW_ENV', data: (window as any)._ENV || {} },
-    { name: 'WINDOW_PROC', data: (window as any).process?.env || {} }
+    { name: 'VITE_ENV', data: viteEnv },
+    { name: 'PROCESS_ENV', data: procEnv },
+    { name: 'WINDOW_ENV', data: (window as any)._ENV || {} }
   ];
 
-  const prefixes = ['', 'VITE_', 'REACT_APP_', 'NEXT_PUBLIC_', 'FIREBASE_', 'FIREBASE_CONFIG_'];
+  // For Firebase, we prefer the VITE_ prefix as per modern standards
+  const prefixes = ['VITE_FIREBASE_', 'VITE_', 'FIREBASE_', ''];
 
-  // Deep probe for a specific variable
   const probe = (key: string) => {
     for (const source of sources) {
       for (const p of prefixes) {
@@ -46,7 +50,6 @@ const getFirebaseConfig = (addLogFn: (entry: any) => void) => {
     return null;
   };
 
-  // Diagnostic mapping
   const keysToProbe = ['PROJECT_ID', 'DATABASE_URL', 'API_KEY', 'AUTH_DOMAIN', 'APP_ID'];
   const results: Record<string, string> = {};
   
@@ -65,59 +68,32 @@ const getFirebaseConfig = (addLogFn: (entry: any) => void) => {
     label: 'COSMIC TRACE', 
     duration: 0, 
     status: 'SUCCESS', 
-    message: `Probe Results (Source Map): ${Object.entries(results).map(([k,v]) => `${k}=${v}`).join(' | ')}`
+    message: `Environment Probe: ${Object.entries(results).map(([k,v]) => `${k}=${v}`).join(' | ')}`
   });
 
-  // VITE ARCHITECTURAL & SECURITY GUIDE (New requested insights)
-  addLogFn({
-    type: 'SYSTEM',
-    label: 'FIX GUIDE',
-    duration: 0,
-    status: 'SUCCESS',
-    message: `VITE ARCHITECTURAL INSIGHTS & BEST PRACTICES: 
-
-1. ARCHITECTURAL RATIONALE: Vite uses static replacement via 'import.meta.env'. Unlike Webpack's runtime 'process.env' polyfills, Vite replaces these strings during the build process to maintain ESM-native performance and allow for aggressive tree-shaking.
-
-2. SECURITY & THE VITE_ PREFIX: The 'VITE_' prefix is a critical security boundary. Vite explicitly ignores any variable NOT prefixed with 'VITE_' to prevent accidental leaking of sensitive OS-level environment variables (like PATH or database passwords) into the client-side JavaScript bundle.
-
-3. SENSITIVE CONFIG MANAGEMENT: 
-   - Local: Use '.env.local' for secrets; never commit it to source control.
-   - Development: Use '.env.development' for public-facing dev endpoints.
-   - Production: Inject secrets via the CI/CD platform (Vercel, Netlify, GCP Secret Manager). This ensures variables are statically replaced in the final build artifact without being stored in the repository.
-
-4. TROUBLESHOOTING ANOMALIES: If you see 'API_KEY=PROCESS_ENV->API_KEY', it means the build tool is passing a string literal instead of the value. Ensure your build environment (Node/Shell) has the variable exported correctly BEFORE 'npm run build' is executed.`
-  });
-
-  // Extract raw values
-  const rawId = probe('PROJECT_ID') || probe('GCP_PROJECT') || probe('GOOGLE_CLOUD_PROJECT') || probe('PROJECTID');
-  const rawDb = probe('DATABASE_URL') || probe('DB_URL') || probe('DATABASEURL');
+  // Extraction logic for initialization
+  const rawId = probe('PROJECT_ID')?.val;
+  const rawDb = probe('DATABASE_URL')?.val;
   
-  let projectId = rawId?.val || null;
-  let databaseURL = rawDb?.val || null;
+  let projectId = rawId || null;
+  let databaseURL = rawDb || null;
 
-  // HEURISTIC 1: Extract Project ID from Database URL if ID is missing
+  // Heuristic fallbacks
   if (!projectId && databaseURL) {
     const match = databaseURL.match(/https:\/\/(.*?)\.firebaseio\.com/);
-    if (match && match[1]) {
-      projectId = match[1].replace('-default-rtdb', '');
-      addLogFn({ type: 'SYSTEM', label: 'EXTRACTION', duration: 0, status: 'SUCCESS', message: `Extracted Project ID [${projectId}] from Database URL.` });
-    }
+    if (match) projectId = match[1].replace('-default-rtdb', '');
   }
-
-  // HEURISTIC 2: Construct Database URL from Project ID if URL is missing
   if (projectId && !databaseURL) {
     databaseURL = `https://${projectId}-default-rtdb.firebaseio.com/`;
-    addLogFn({ type: 'SYSTEM', label: 'SYNTHESIS', duration: 0, status: 'SUCCESS', message: `Synthesized DB URL from Project ID [${projectId}].` });
   }
 
-  // Final validation log
   if (!projectId || !databaseURL) {
     addLogFn({ 
       type: 'ERROR', 
       label: 'REGISTRY FAIL', 
       duration: 0, 
       status: 'ERROR', 
-      message: `Critical Error: Missing Project ID or DB URL. World Brain synchronization is offline. Review the 'FIX GUIDE' for architectural resolution.`
+      message: `Firebase setup incomplete. Ensure VITE_FIREBASE_PROJECT_ID is set.`
     });
   }
 
@@ -145,7 +121,7 @@ try {
       label: 'WORLD BRAIN', 
       duration: 0, 
       status: 'SUCCESS', 
-      message: `Global synchronization layer active. Target: ${firebaseConfig.databaseURL}` 
+      message: `Global synchronization active at ${firebaseConfig.databaseURL}` 
     });
   } else {
     addLog({ 
@@ -153,13 +129,14 @@ try {
       label: 'WORLD BRAIN', 
       duration: 0, 
       status: 'SUCCESS', 
-      message: `Sync Layer in Local Mode: Shared caching disabled due to registry resolution status.` 
+      message: `Local Mode: Knowledge stored in browser memory only.` 
     });
   }
 } catch (e: any) {
-  addLog({ type: 'SYSTEM', label: 'SYNC LAYER', duration: 0, status: 'SUCCESS', message: `Local session only: ${e.message}` });
+  addLog({ type: 'SYSTEM', label: 'SYNC LAYER', duration: 0, status: 'SUCCESS', message: `Database init failed: ${e.message}` });
 }
 
+// Gemini AI setup as per instructions
 const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 async function generateCacheKey(input: string): Promise<string> {
@@ -191,9 +168,7 @@ async function getFromCache(category: string, key: string, dataType: string): Pr
         localStorage.setItem(`discovery_v12_${category}_${key}`, val);
         return val;
       }
-    } catch (e) {
-      console.warn("Global cache error", e);
-    }
+    } catch (e) {}
   }
 
   const local = localStorage.getItem(`discovery_v12_${category}_${key}`);
@@ -229,149 +204,168 @@ async function saveToCache(category: string, key: string, data: string): Promise
         label: `GLOBAL SYNC`, 
         duration: performance.now() - start, 
         status: 'SUCCESS', 
-        message: `Knowledge published globally for all users.`
+        message: `Knowledge published globally.`
       });
-    } catch (e: any) {
-      addLog({ 
-        type: 'ERROR', 
-        label: 'SYNC ERROR', 
-        duration: 0, 
-        status: 'ERROR', 
-        message: `Failed to publish to Global Brain: ${e.message}` 
-      });
-    }
+    } catch (e: any) {}
   }
 }
 
-function mathPhoneticizer(text: string): string {
-  return text
-    .replace(/\\frac\{(.*?)\}\{(.*?)\}/g, '$1 over $2')
-    .replace(/\\Delta/g, 'delta')
-    .replace(/\\hbar/g, 'h-bar')
-    .replace(/\\geq/g, 'greater than or equal to')
-    .replace(/\\leq/g, 'less than or equal to')
-    .replace(/\\pi/g, 'pi')
-    .replace(/\\infty/g, 'infinity')
-    .replace(/\\int/g, 'the integral')
-    .replace(/\^2/g, ' squared')
-    .replace(/\^3/g, ' cubed')
-    .replace(/_/g, ' ') 
-    .replace(/\[IMAGE:.*?\]/g, '') 
-    .replace(/\$|\\|\{|\}/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-export async function generateEinsteinResponse(prompt: string, history: { role: string, parts: { text: string }[] }[]): Promise<string> {
-  const systemInstruction = `You are Professor Albert Einstein. Use a whimsical German accent. Use LaTeX for math. Include exactly one [IMAGE: visual description] tag.`;
-  const cacheInput = JSON.stringify({ history, prompt, systemInstruction });
-  const key = await generateCacheKey(cacheInput);
-  
-  const cached = await getFromCache('responses', key, 'TEXT');
-  if (cached) return cached;
-  
+/**
+ * Generates Einstein's academic response using Gemini 3 Pro.
+ */
+export async function generateEinsteinResponse(prompt: string, history: any[]): Promise<string> {
   const start = performance.now();
+  const ai = getAI();
+  const cacheKey = await generateCacheKey(JSON.stringify({ prompt, history }));
+  
+  const cached = await getFromCache('response', cacheKey, 'thought');
+  if (cached) return cached;
+
   try {
-    const ai = getAI();
-    const contents = history.concat([{ role: 'user', parts: [{ text: prompt }] }]);
-    addLog({ type: 'SYSTEM', label: 'AI THINKING', duration: 0, status: 'SUCCESS', message: 'Synthesizing with Gemini 3 Pro...' });
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-preview',
+      contents: [...history, { role: 'user', parts: [{ text: prompt }] }],
+      config: {
+        systemInstruction: "You are Professor Albert Einstein. Address the user as 'My dear friend'. Be whimsical, humble, and academic. Use metaphors. If you generate an image tag, use the format [IMAGE: description].",
+        temperature: 0.8,
+      }
+    });
+
+    const text = response.text || "Ach, ze universe remains a mystery.";
+    await saveToCache('response', cacheKey, text);
     
-    const response = await ai.models.generateContent({ 
-      model: 'gemini-3-pro-preview', 
-      contents, 
-      config: { systemInstruction, temperature: 0.85 } 
+    addLog({ 
+      type: 'AI_TEXT', 
+      label: 'RELATIVITY', 
+      duration: performance.now() - start, 
+      status: 'SUCCESS', 
+      message: 'Thought waves successfully captured.' 
     });
     
-    const result = response.text || "Ach, ze stars are blurry.";
-    await saveToCache('responses', key, result);
-    addLog({ type: 'AI_TEXT', label: 'SYNTHESIS', duration: performance.now() - start, status: 'SUCCESS', message: 'New thought synthesized and shared.' });
-    return result;
+    return text;
   } catch (e: any) {
-    addLog({ type: 'ERROR', label: 'AI FAULT', duration: 0, status: 'ERROR', message: `Einstein is confused: ${e.message}` });
-    return "Ach, my brain is a bit messy today.";
+    addLog({ type: 'ERROR', label: 'VOID ERROR', duration: 0, status: 'ERROR', message: e.message });
+    throw e;
   }
 }
 
-export async function generateChalkboardImage(prompt: string): Promise<string> {
-  const key = await generateCacheKey(prompt);
-  const cached = await getFromCache('images', key, 'SKETCH');
-  if (cached) return cached;
-  
+/**
+ * Generates a chalkboard image using Gemini 2.5 Flash Image.
+ */
+export async function generateChalkboardImage(prompt: string): Promise<string | null> {
   const start = performance.now();
+  const ai = getAI();
+  const cacheKey = await generateCacheKey(prompt);
+  
+  const cached = await getFromCache('image', cacheKey, 'visual');
+  if (cached) return cached;
+
   try {
-    const ai = getAI();
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
-      contents: { parts: [{ text: `A physics chalkboard drawing with white chalk: ${prompt}` }] }
+      contents: { parts: [{ text: `A chalkboard sketch of: ${prompt}. Style: old chalkboard with white chalk, rough texture, academic, intricate detail, charcoal-like.` }] },
+      config: {
+        imageConfig: { aspectRatio: '16:9' }
+      }
     });
-    
-    let imageData = "";
-    if (response.candidates?.[0]?.content?.parts) {
-      for (const part of response.candidates[0].content.parts) {
-        if (part.inlineData) {
-          imageData = `data:image/png;base64,${part.inlineData.data}`;
-          break;
-        }
+
+    let imageUrl = null;
+    for (const part of response.candidates[0].content.parts) {
+      if (part.inlineData) {
+        imageUrl = `data:image/png;base64,${part.inlineData.data}`;
+        break;
       }
     }
-    
-    if (imageData) {
-      await saveToCache('images', key, imageData);
-      addLog({ type: 'AI_IMAGE', label: 'CHALK SKETCH', duration: performance.now() - start, status: 'SUCCESS', message: 'New diagram rendered and synced.' });
-      return imageData;
+
+    if (imageUrl) {
+      await saveToCache('image', cacheKey, imageUrl);
+      addLog({ 
+        type: 'AI_IMAGE', 
+        label: 'OPTICS', 
+        duration: performance.now() - start, 
+        status: 'SUCCESS', 
+        message: 'Visual observation manifested on chalkboard.' 
+      });
     }
-    throw new Error("No pixel data returned.");
+    
+    return imageUrl;
   } catch (e: any) {
-    addLog({ type: 'ERROR', label: 'SKETCH FAULT', duration: 0, status: 'ERROR', message: e.message });
-    throw e;
+    addLog({ type: 'ERROR', label: 'OPTIC FAIL', duration: 0, status: 'ERROR', message: e.message });
+    return null;
   }
 }
 
-export async function generateEinsteinSpeech(text: string): Promise<string> {
-  const optimized = mathPhoneticizer(text).substring(0, 1000);
-  if (!optimized) return "";
-  const key = await generateCacheKey(optimized);
-  const cached = localStorage.getItem(`discovery_v12_audio_${key}`);
-  if (cached) return cached;
-  
+/**
+ * Generates Einstein's speech audio using Gemini TTS.
+ */
+export async function generateEinsteinSpeech(text: string): Promise<string | null> {
   const start = performance.now();
+  const ai = getAI();
+  const cleanText = text.replace(/\[IMAGE:.*?\]/g, '').trim();
+  if (!cleanText) return null;
+
+  const cacheKey = await generateCacheKey(cleanText);
+  const cached = await getFromCache('speech', cacheKey, 'resonance');
+  if (cached) return cached;
+
   try {
-    const ai = getAI();
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text: `Speak as Albert Einstein: ${optimized}` }] }],
+      contents: [{ parts: [{ text: `Speak as Einstein: ${cleanText}` }] }],
       config: {
         responseModalities: [Modality.AUDIO],
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Charon' } } },
-      },
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName: 'Charon' }
+          }
+        }
+      }
     });
-    
-    const base64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (base64) {
-      try { localStorage.setItem(`discovery_v12_audio_${key}`, base64); } catch(e) {}
-      addLog({ type: 'AI_AUDIO', label: 'VOCAL SYNTH', duration: performance.now() - start, status: 'SUCCESS', message: 'Speech articulated locally.' });
-      return base64;
+
+    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (base64Audio) {
+      await saveToCache('speech', cacheKey, base64Audio);
+      addLog({ 
+        type: 'AI_AUDIO', 
+        label: 'HARMONY', 
+        duration: performance.now() - start, 
+        status: 'SUCCESS', 
+        message: 'Sound waves resonated through ze ether.' 
+      });
     }
-    throw new Error("Mute response.");
+    return base64Audio || null;
   } catch (e: any) {
-    addLog({ type: 'ERROR', label: 'VOCAL FAULT', duration: 0, status: 'ERROR', message: e.message });
-    throw e;
+    addLog({ type: 'ERROR', label: 'AUDIO FAIL', duration: 0, status: 'ERROR', message: e.message });
+    return null;
   }
 }
 
-export function decode(base64: string) {
+/**
+ * Manual implementation of base64 decoding to bytes as required by guidelines.
+ */
+export function decode(base64: string): Uint8Array {
   const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
   return bytes;
 }
 
-export async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampleRate: number, numChannels: number): Promise<AudioBuffer> {
-  const byteLength = data.byteLength - (data.byteLength % 2);
-  const dataInt16 = new Int16Array(data.buffer, data.byteOffset, byteLength / 2);
+/**
+ * Decodes raw PCM audio data into an AudioBuffer as required by guidelines.
+ */
+export async function decodeAudioData(
+  data: Uint8Array,
+  ctx: AudioContext,
+  sampleRate: number,
+  numChannels: number,
+): Promise<AudioBuffer> {
+  const dataInt16 = new Int16Array(data.buffer);
   const frameCount = dataInt16.length / numChannels;
   const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
-  
+
   for (let channel = 0; channel < numChannels; channel++) {
     const channelData = buffer.getChannelData(channel);
     for (let i = 0; i < frameCount; i++) {
