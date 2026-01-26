@@ -15,16 +15,12 @@ import {
 interface ErrorBoundaryProps { children?: React.ReactNode; }
 interface ErrorBoundaryState { hasError: boolean; }
 
-// Fixed: Explicitly declaring state and props as properties to resolve "Property 'state/props' does not exist" errors in some TS configurations.
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Explicitly declare state property for TypeScript
   state: ErrorBoundaryState = { hasError: false };
-  // Fixed: Explicitly declare props property for TypeScript to resolve error on line 45
   props: ErrorBoundaryProps;
 
   constructor(props: ErrorBoundaryProps) {
     super(props);
-    // Fixed: Initialize props explicitly to satisfy compiler checks in strict environments
     this.props = props;
   }
 
@@ -37,7 +33,6 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 
   render() {
-    // Correctly accessing state and props which are now properly typed
     if (this.state.hasError) {
       return (
         <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#000', color: '#fff', textAlign: 'center', padding: '2rem' }}>
@@ -46,7 +41,6 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
         </div>
       );
     }
-    // Fixed: this.props.children is now correctly typed and recognized by the compiler
     return this.props.children;
   }
 }
@@ -88,7 +82,6 @@ const EinsteinApp: React.FC = () => {
 
   useEffect(() => {
     if (messages.length > 0 && !isLoading && scrollContainerRef.current) {
-      // Find the last message and scroll it to the top of the container
       const lastMsg = scrollContainerRef.current.querySelector('.msg-container:last-child');
       if (lastMsg) {
         lastMsg.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -116,7 +109,6 @@ const EinsteinApp: React.FC = () => {
     const currentSession = speechSessionId.current;
     setCurrentlySpeakingId(msgId);
     
-    // Chunking text by logical paragraph breaks to ensure full completion
     const paragraphs = text.replace(/\[IMAGE:.*?\]/g, '').split(/\n\n+/).filter(p => p.trim().length > 0);
     
     try {
@@ -283,9 +275,17 @@ const EinsteinApp: React.FC = () => {
           <div className="chat-scroll-container no-scrollbar" ref={scrollContainerRef}>
             {messages.map((msg, idx) => (
               <div key={idx} className={`msg-container ${msg.role === 'einstein' ? 'bg-einstein' : 'bg-user'}`}>
-                <div>{msg.text.replace(/\[IMAGE:.*?\]/g, '')}</div>
+                {/* 
+                   Render paragraphs with significant vertical gap (gap-8) to ensure 
+                   a clear blank line appears between each distinct block of thought.
+                */}
+                <div className="flex flex-col gap-8">
+                  {msg.text.replace(/\[IMAGE:.*?\]/g, '').split(/\n+/).filter(p => p.trim()).map((paragraph, pIdx) => (
+                    <p key={pIdx} className="leading-relaxed">{paragraph.trim()}</p>
+                  ))}
+                </div>
                 {msg.role === 'einstein' && (
-                  <div onClick={() => !isLoading && playSpeech(msg.text, idx)} className={`text-[9px] mt-2 font-black uppercase tracking-widest cursor-pointer hover:opacity-100 flex items-center gap-1 ${currentlySpeakingId === idx ? 'text-red-400' : 'opacity-50'}`}>
+                  <div onClick={() => !isLoading && playSpeech(msg.text, idx)} className={`text-[9px] mt-6 font-black uppercase tracking-widest cursor-pointer hover:opacity-100 flex items-center gap-1 ${currentlySpeakingId === idx ? 'text-red-400' : 'opacity-50'}`}>
                     {currentlySpeakingId === idx ? '● Narrating...' : '▶ Read Thoughts'}
                   </div>
                 )}

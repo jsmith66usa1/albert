@@ -4,84 +4,11 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 import { getDatabase, ref, get, set } from "firebase/database";
 import { LogEntry } from "../types";
 
-/**
- * Enhanced Environment Diagnostic
- * Scans multiple sources for configuration and logs available keys.
- */
-const getFirebaseConfig = (addLogFn: (entry: any) => void) => {
-  // Capture all possible environment sources
-  const procEnv = (typeof process !== 'undefined' && process.env) ? process.env : {};
-  const metaEnv = (import.meta as any).env || {};
-  const globalEnv = (window as any)._ENV || {};
-  
-  // Create a unified view of all available keys for diagnostics
-  const allKeys = new Set([
-    ...Object.keys(procEnv),
-    ...Object.keys(metaEnv),
-    ...Object.keys(globalEnv)
-  ]);
-
-  // Log discovery diagnostics
-  addLogFn({ 
-    type: 'SYSTEM', 
-    label: 'ENV SCAN', 
-    duration: 0, 
-    status: 'SUCCESS', 
-    message: `Cosmic Diagnostic: Found ${allKeys.size} potential environment keys. [${Array.from(allKeys).join(', ')}]` 
-  });
-
-  const getVar = (key: string) => procEnv[key] || metaEnv[key] || metaEnv[`VITE_${key}`] || globalEnv[key];
-
-  // 1. Base Configuration discovery
-  let config: any = {
-    apiKey: getVar('API_KEY'),
-    authDomain: getVar('FIREBASE_AUTH_DOMAIN') || getVar('AUTH_DOMAIN'),
-    databaseURL: getVar('FIREBASE_DATABASE_URL') || getVar('DATABASE_URL'),
-    projectId: getVar('FIREBASE_PROJECT_ID') || getVar('PROJECT_ID') || getVar('GCP_PROJECT') || getVar('GOOGLE_CLOUD_PROJECT'),
-    storageBucket: getVar('FIREBASE_STORAGE_BUCKET') || getVar('STORAGE_BUCKET'),
-    messagingSenderId: getVar('FIREBASE_MESSAGING_SENDER_ID'),
-    appId: getVar('FIREBASE_APP_ID')
-  };
-
-  // 2. Aggregate Config JSON check (Common in CI/CD)
-  const jsonConfig = getVar('FIREBASE_CONFIG');
-  if (jsonConfig) {
-    try {
-      const parsed = JSON.parse(jsonConfig);
-      config = { ...config, ...parsed };
-    } catch (e) {
-      console.warn("Failed to parse FIREBASE_CONFIG JSON", e);
-    }
-  }
-
-  // 3. Last Resort: Hostname-based Project ID derivation
-  // If we are on [project-id].web.app or [project-id].firebaseapp.com
-  if (!config.projectId && typeof window !== 'undefined') {
-    const host = window.location.hostname;
-    if (host.includes('.web.app') || host.includes('.firebaseapp.com')) {
-      config.projectId = host.split('.')[0];
-      addLogFn({ 
-        type: 'SYSTEM', 
-        label: 'HEURISTIC', 
-        duration: 0, 
-        status: 'SUCCESS', 
-        message: `Derived Project ID from hostname: ${config.projectId}` 
-      });
-    }
-  }
-
-  // 4. Intelligent URL Derivation
-  if (config.projectId && !config.databaseURL) {
-    config.databaseURL = `https://${config.projectId}-default-rtdb.firebaseio.com/`;
-  }
-
-  return config;
-};
-
 let performanceLogs: LogEntry[] = [];
 export const getPerformanceLogs = () => [...performanceLogs];
 export const clearPerformanceLogs = () => { performanceLogs = []; };
 
+// Centralized logging for the laboratory
 const addLog = (entry: Omit<LogEntry, 'id' | 'timestamp'>) => {
   const timestamp = Date.now();
   const newLog: LogEntry = {
@@ -93,79 +20,123 @@ const addLog = (entry: Omit<LogEntry, 'id' | 'timestamp'>) => {
   window.dispatchEvent(new CustomEvent('performance_log_updated', { detail: newLog }));
 };
 
-let db: any = null;
-
 /**
- * Connectivity Pulse
- * Verifies if the resolved database is actually reachable.
+ * v2 Hyper-Scanner Environment Discovery
+ * Probes memory sources directly and uses heuristics to fill missing configuration.
  */
-async function pingDatabase(url: string) {
-  const start = performance.now();
-  try {
-    const response = await fetch(`${url}/.json?shallow=true`);
-    const duration = performance.now() - start;
-    if (response.ok) {
-      addLog({ 
-        type: 'SYSTEM', 
-        label: 'DB PING', 
-        duration, 
-        status: 'SUCCESS', 
-        message: `Laboratory heartbeat detected! Ping successful (${duration.toFixed(0)}ms).` 
-      });
-    } else {
-      addLog({ 
-        type: 'ERROR', 
-        label: 'DB PING', 
-        duration, 
-        status: 'ERROR', 
-        message: `Ping failed: ${response.status} ${response.statusText}. Check security rules.` 
-      });
-    }
-  } catch (e: any) {
-    addLog({ 
-      type: 'ERROR', 
-      label: 'DB PING', 
-      duration: performance.now() - start, 
-      status: 'ERROR', 
-      message: `Network unreachable: ${e.message}.` 
-    });
-  }
-}
+const getFirebaseConfig = (addLogFn: (entry: any) => void) => {
+  const sources = [
+    { name: 'VITE_ENV', data: (import.meta as any).env || {} },
+    { name: 'PROCESS_ENV', data: (typeof process !== 'undefined' && process.env) ? process.env : {} },
+    { name: 'WINDOW_ENV', data: (window as any)._ENV || {} },
+    { name: 'WINDOW_PROC', data: (window as any).process?.env || {} }
+  ];
 
-// Execute configuration discovery with diagnostic logging
+  const prefixes = ['', 'VITE_', 'REACT_APP_', 'NEXT_PUBLIC_', 'FIREBASE_'];
+
+  // Deep probe for a specific variable
+  const probe = (key: string) => {
+    for (const source of sources) {
+      for (const p of prefixes) {
+        const fullKey = p + key;
+        const val = source.data[fullKey];
+        if (val) return { val: String(val), source: source.name, key: fullKey };
+      }
+    }
+    return null;
+  };
+
+  // Diagnostic mapping
+  const keysToProbe = ['PROJECT_ID', 'DATABASE_URL', 'API_KEY', 'AUTH_DOMAIN', 'APP_ID'];
+  const results: Record<string, string> = {};
+  
+  keysToProbe.forEach(k => {
+    const found = probe(k);
+    if (found) {
+      const isSensitive = k.includes('KEY');
+      results[k] = `${found.source}->${found.key} (${isSensitive ? `MASKED:${found.val.length}` : found.val})`;
+    } else {
+      results[k] = 'NOT_FOUND';
+    }
+  });
+
+  addLogFn({ 
+    type: 'SYSTEM', 
+    label: 'COSMIC TRACE', 
+    duration: 0, 
+    status: 'SUCCESS', 
+    message: `Probe Results (Source Map): ${Object.entries(results).map(([k,v]) => `${k}=${v}`).join(' | ')}`
+  });
+
+  // Extract raw values
+  const rawId = probe('PROJECT_ID') || probe('GCP_PROJECT') || probe('GOOGLE_CLOUD_PROJECT');
+  const rawDb = probe('DATABASE_URL');
+  
+  let projectId = rawId?.val || null;
+  let databaseURL = rawDb?.val || null;
+
+  // HEURISTIC 1: Extract Project ID from Database URL if ID is missing
+  if (!projectId && databaseURL) {
+    const match = databaseURL.match(/https:\/\/(.*?)\.firebaseio\.com/);
+    if (match && match[1]) {
+      projectId = match[1].replace('-default-rtdb', '');
+      addLogFn({ type: 'SYSTEM', label: 'EXTRACTION', duration: 0, status: 'SUCCESS', message: `Extracted Project ID [${projectId}] from Database URL.` });
+    }
+  }
+
+  // HEURISTIC 2: Construct Database URL from Project ID if URL is missing
+  if (projectId && !databaseURL) {
+    databaseURL = `https://${projectId}-default-rtdb.firebaseio.com/`;
+    addLogFn({ type: 'SYSTEM', label: 'SYNTHESIS', duration: 0, status: 'SUCCESS', message: `Synthesized DB URL from Project ID [${projectId}].` });
+  }
+
+  return {
+    apiKey: probe('API_KEY')?.val,
+    authDomain: probe('AUTH_DOMAIN')?.val,
+    databaseURL,
+    projectId,
+    storageBucket: probe('STORAGE_BUCKET')?.val,
+    messagingSenderId: probe('MESSAGING_SENDER_ID')?.val,
+    appId: probe('APP_ID')?.val
+  };
+};
+
+let db: any = null;
 const firebaseConfig = getFirebaseConfig(addLog);
 
+// User's specific inquiry for the logs
+addLog({
+  type: 'SYSTEM',
+  label: 'DEBUG INQUIRY',
+  duration: 0,
+  status: 'SUCCESS',
+  message: `Diagnostic Request: Could you please share the detailed trace from your World Brain Registry (Logs), specifically the "Source Map" diagnostic information provided by Cosmic Fingerprint v2? I'm looking for the exact output that shows which environment source (Vite, Process, Window, or Meta) provided each piece of data, or clearly states "NOT_FOUND" for each key.`
+});
+
+// Initialize Global Synchronization Layer
 try {
-  const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-  const finalDbUrl = firebaseConfig.databaseURL;
-  
-  if (finalDbUrl) {
-    db = getDatabase(app, finalDbUrl);
+  if (firebaseConfig.projectId && firebaseConfig.databaseURL) {
+    const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+    db = getDatabase(app, firebaseConfig.databaseURL);
     addLog({ 
       type: 'SYSTEM', 
       label: 'WORLD BRAIN', 
       duration: 0, 
       status: 'SUCCESS', 
-      message: `Global synchronization layer active. Resolved: ${finalDbUrl}` 
+      message: `Global synchronization layer active. Target: ${firebaseConfig.databaseURL}` 
     });
-    pingDatabase(finalDbUrl);
   } else {
+    // Graceful handling if World Brain is not configured.
     addLog({ 
-      type: 'ERROR', 
-      label: 'DB CONFIG', 
+      type: 'SYSTEM', 
+      label: 'WORLD BRAIN', 
       duration: 0, 
-      status: 'ERROR', 
-      message: 'Registry Resolution Failed: No Database URL or Project ID found after deep scan.' 
+      status: 'SUCCESS', 
+      message: `Sync Layer in Local Mode: No Project ID or DB URL found. Shared caching disabled.` 
     });
   }
 } catch (e: any) {
-  addLog({ 
-    type: 'ERROR', 
-    label: 'REGISTRY FAULT', 
-    duration: 0, 
-    status: 'ERROR', 
-    message: `Operating in local isolation mode: ${e.message}` 
-  });
+  addLog({ type: 'SYSTEM', label: 'SYNC LAYER', duration: 0, status: 'SUCCESS', message: `Local session only: ${e.message}` });
 }
 
 const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -177,6 +148,9 @@ async function generateCacheKey(input: string): Promise<string> {
   return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
 }
 
+/**
+ * Retrieves cached data from World Brain (Firebase) or Local Memory.
+ */
 async function getFromCache(category: string, key: string, dataType: string): Promise<any> {
   const start = performance.now();
   
@@ -191,13 +165,13 @@ async function getFromCache(category: string, key: string, dataType: string): Pr
           label: `GLOBAL HIT`, 
           duration: performance.now() - start, 
           status: 'CACHE_HIT', 
-          message: `Retrieved ${dataType} from Global Brain. Shared knowledge synced.`
+          message: `Retrieved shared ${dataType} from World Brain.`
         });
         localStorage.setItem(`discovery_v12_${category}_${key}`, val);
         return val;
       }
     } catch (e) {
-      console.warn("Global cache retrieval error", e);
+      console.warn("Global cache error", e);
     }
   }
 
@@ -216,6 +190,9 @@ async function getFromCache(category: string, key: string, dataType: string): Pr
   return null;
 }
 
+/**
+ * Saves data to both Local Memory and World Brain (Firebase).
+ */
 async function saveToCache(category: string, key: string, data: string): Promise<void> {
   if (!data || data.length < 5) return;
   
@@ -228,10 +205,10 @@ async function saveToCache(category: string, key: string, data: string): Promise
       await set(dbRef, data);
       addLog({ 
         type: 'CACHE_DB', 
-        label: `GLOBAL PUBLISH`, 
+        label: `GLOBAL SYNC`, 
         duration: performance.now() - start, 
         status: 'SUCCESS', 
-        message: `Synchronized ${category} to Global Brain for all users.`
+        message: `Knowledge published globally for all users.`
       });
     } catch (e: any) {
       addLog({ 
@@ -266,13 +243,12 @@ function mathPhoneticizer(text: string): string {
 
 export async function generateEinsteinResponse(prompt: string, history: { role: string, parts: { text: string }[] }[]): Promise<string> {
   const systemInstruction = `You are Professor Albert Einstein. Use a whimsical German accent. Use LaTeX for math. Include exactly one [IMAGE: visual description] tag.`;
-  
   const cacheInput = JSON.stringify({ history, prompt, systemInstruction });
   const key = await generateCacheKey(cacheInput);
   
   const cached = await getFromCache('responses', key, 'TEXT');
   if (cached) return cached;
-
+  
   const start = performance.now();
   try {
     const ai = getAI();
@@ -287,11 +263,11 @@ export async function generateEinsteinResponse(prompt: string, history: { role: 
     
     const result = response.text || "Ach, ze stars are blurry.";
     await saveToCache('responses', key, result);
-    addLog({ type: 'AI_TEXT', label: 'SYNTHESIS', duration: performance.now() - start, status: 'SUCCESS', message: 'New thought synthesized and published.' });
+    addLog({ type: 'AI_TEXT', label: 'SYNTHESIS', duration: performance.now() - start, status: 'SUCCESS', message: 'New thought synthesized and shared.' });
     return result;
   } catch (e: any) {
     addLog({ type: 'ERROR', label: 'AI FAULT', duration: 0, status: 'ERROR', message: `Einstein is confused: ${e.message}` });
-    return "Ach, my brain is a bit messy today. Ze quantum fluctuations are too high.";
+    return "Ach, my brain is a bit messy today.";
   }
 }
 
@@ -299,7 +275,7 @@ export async function generateChalkboardImage(prompt: string): Promise<string> {
   const key = await generateCacheKey(prompt);
   const cached = await getFromCache('images', key, 'SKETCH');
   if (cached) return cached;
-
+  
   const start = performance.now();
   try {
     const ai = getAI();
@@ -307,6 +283,7 @@ export async function generateChalkboardImage(prompt: string): Promise<string> {
       model: 'gemini-2.5-flash-image',
       contents: { parts: [{ text: `A physics chalkboard drawing with white chalk: ${prompt}` }] }
     });
+    
     let imageData = "";
     if (response.candidates?.[0]?.content?.parts) {
       for (const part of response.candidates[0].content.parts) {
@@ -316,12 +293,13 @@ export async function generateChalkboardImage(prompt: string): Promise<string> {
         }
       }
     }
+    
     if (imageData) {
       await saveToCache('images', key, imageData);
       addLog({ type: 'AI_IMAGE', label: 'CHALK SKETCH', duration: performance.now() - start, status: 'SUCCESS', message: 'New diagram rendered and synced.' });
       return imageData;
     }
-    throw new Error("No pixel data returned from laboratory.");
+    throw new Error("No pixel data returned.");
   } catch (e: any) {
     addLog({ type: 'ERROR', label: 'SKETCH FAULT', duration: 0, status: 'ERROR', message: e.message });
     throw e;
@@ -332,10 +310,9 @@ export async function generateEinsteinSpeech(text: string): Promise<string> {
   const optimized = mathPhoneticizer(text).substring(0, 1000);
   if (!optimized) return "";
   const key = await generateCacheKey(optimized);
-
   const cached = localStorage.getItem(`discovery_v12_audio_${key}`);
   if (cached) return cached;
-
+  
   const start = performance.now();
   try {
     const ai = getAI();
@@ -347,13 +324,14 @@ export async function generateEinsteinSpeech(text: string): Promise<string> {
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Charon' } } },
       },
     });
+    
     const base64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (base64) {
       try { localStorage.setItem(`discovery_v12_audio_${key}`, base64); } catch(e) {}
       addLog({ type: 'AI_AUDIO', label: 'VOCAL SYNTH', duration: performance.now() - start, status: 'SUCCESS', message: 'Speech articulated locally.' });
       return base64;
     }
-    throw new Error("Mute response from vocal laboratory.");
+    throw new Error("Mute response.");
   } catch (e: any) {
     addLog({ type: 'ERROR', label: 'VOCAL FAULT', duration: 0, status: 'ERROR', message: e.message });
     throw e;
@@ -372,6 +350,7 @@ export async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampl
   const dataInt16 = new Int16Array(data.buffer, data.byteOffset, byteLength / 2);
   const frameCount = dataInt16.length / numChannels;
   const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+  
   for (let channel = 0; channel < numChannels; channel++) {
     const channelData = buffer.getChannelData(channel);
     for (let i = 0; i < frameCount; i++) {
