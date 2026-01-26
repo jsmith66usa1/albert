@@ -32,7 +32,7 @@ const getFirebaseConfig = (addLogFn: (entry: any) => void) => {
     { name: 'WINDOW_PROC', data: (window as any).process?.env || {} }
   ];
 
-  const prefixes = ['', 'VITE_', 'REACT_APP_', 'NEXT_PUBLIC_', 'FIREBASE_'];
+  const prefixes = ['', 'VITE_', 'REACT_APP_', 'NEXT_PUBLIC_', 'FIREBASE_', 'FIREBASE_CONFIG_'];
 
   // Deep probe for a specific variable
   const probe = (key: string) => {
@@ -69,8 +69,8 @@ const getFirebaseConfig = (addLogFn: (entry: any) => void) => {
   });
 
   // Extract raw values
-  const rawId = probe('PROJECT_ID') || probe('GCP_PROJECT') || probe('GOOGLE_CLOUD_PROJECT');
-  const rawDb = probe('DATABASE_URL');
+  const rawId = probe('PROJECT_ID') || probe('GCP_PROJECT') || probe('GOOGLE_CLOUD_PROJECT') || probe('PROJECTID');
+  const rawDb = probe('DATABASE_URL') || probe('DB_URL') || probe('DATABASEURL');
   
   let projectId = rawId?.val || null;
   let databaseURL = rawDb?.val || null;
@@ -88,6 +88,17 @@ const getFirebaseConfig = (addLogFn: (entry: any) => void) => {
   if (projectId && !databaseURL) {
     databaseURL = `https://${projectId}-default-rtdb.firebaseio.com/`;
     addLogFn({ type: 'SYSTEM', label: 'SYNTHESIS', duration: 0, status: 'SUCCESS', message: `Synthesized DB URL from Project ID [${projectId}].` });
+  }
+
+  // If critical config is still missing, log the Problem Statement Fix Guide
+  if (!projectId || !databaseURL) {
+    addLogFn({ 
+      type: 'ERROR', 
+      label: 'REGISTRY FAIL', 
+      duration: 0, 
+      status: 'ERROR', 
+      message: `Registry Resolution Failed: Missing Project ID or DB URL. Primary Causes: (1) Naming Mismatch: ensure VITE_ or REACT_APP_ prefixes. (2) Missing .env file. (3) Cache issues.`
+    });
   }
 
   return {
@@ -126,13 +137,12 @@ try {
       message: `Global synchronization layer active. Target: ${firebaseConfig.databaseURL}` 
     });
   } else {
-    // Graceful handling if World Brain is not configured.
     addLog({ 
       type: 'SYSTEM', 
       label: 'WORLD BRAIN', 
       duration: 0, 
       status: 'SUCCESS', 
-      message: `Sync Layer in Local Mode: No Project ID or DB URL found. Shared caching disabled.` 
+      message: `Sync Layer in Local Mode: Using in-memory storage only. Please check environment variables if global sync is required.` 
     });
   }
 } catch (e: any) {

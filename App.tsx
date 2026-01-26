@@ -276,16 +276,16 @@ const EinsteinApp: React.FC = () => {
             {messages.map((msg, idx) => (
               <div key={idx} className={`msg-container ${msg.role === 'einstein' ? 'bg-einstein' : 'bg-user'}`}>
                 {/* 
-                   Render paragraphs with significant vertical gap (gap-8) to ensure 
-                   a clear blank line appears between each distinct block of thought.
+                   Using a larger gap (gap-8) to create clear vertical separation 
+                   between blocks, simulating blank lines as requested.
                 */}
                 <div className="flex flex-col gap-8">
-                  {msg.text.replace(/\[IMAGE:.*?\]/g, '').split(/\n+/).filter(p => p.trim()).map((paragraph, pIdx) => (
+                  {msg.text.replace(/\[IMAGE:.*?\]/g, '').split(/\n\s*\n/).filter(p => p.trim()).map((paragraph, pIdx) => (
                     <p key={pIdx} className="leading-relaxed">{paragraph.trim()}</p>
                   ))}
                 </div>
                 {msg.role === 'einstein' && (
-                  <div onClick={() => !isLoading && playSpeech(msg.text, idx)} className={`text-[9px] mt-6 font-black uppercase tracking-widest cursor-pointer hover:opacity-100 flex items-center gap-1 ${currentlySpeakingId === idx ? 'text-red-400' : 'opacity-50'}`}>
+                  <div onClick={() => !isLoading && playSpeech(msg.text, idx)} className={`text-[9px] mt-8 font-black uppercase tracking-widest cursor-pointer hover:opacity-100 flex items-center gap-1 ${currentlySpeakingId === idx ? 'text-red-400' : 'opacity-50'}`}>
                     {currentlySpeakingId === idx ? '● Narrating...' : '▶ Read Thoughts'}
                   </div>
                 )}
