@@ -20,7 +20,7 @@ const addLog = (entry: Omit<LogEntry, 'id' | 'timestamp'>) => {
 };
 
 /**
- * v2.8 Global Knowledge Config
+ * v2.9 Resilient Global Knowledge Config
  * Specifically maps to gen-lang-client-0708024447 project for shared intelligence.
  */
 const getFirebaseConfig = () => {
@@ -80,7 +80,7 @@ async function generateCacheKey(input: string): Promise<string> {
 }
 
 /**
- * Fault-tolerant cache retrieval with timeout protection.
+ * Fault-tolerant cache retrieval with increased timeout (8s).
  */
 async function getFromCache(category: string, key: string, dataType: string): Promise<any> {
   const start = performance.now();
@@ -89,7 +89,8 @@ async function getFromCache(category: string, key: string, dataType: string): Pr
     try {
       const dbRef = ref(db, `world_brain_v12/${category}/${key}`);
       const snapshotPromise = get(dbRef);
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Etheric Timeout')), 3000));
+      // Increased timeout to 8 seconds for retrieval
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Signal Timeout (8s)')), 8000));
       const snapshot = await Promise.race([snapshotPromise, timeoutPromise]) as any;
 
       if (snapshot && snapshot.exists()) {
@@ -113,6 +114,9 @@ async function getFromCache(category: string, key: string, dataType: string): Pr
   return null;
 }
 
+/**
+ * Knowledge upload with increased timeout (10s) to prevent the reported failure.
+ */
 async function saveToCache(category: string, key: string, data: string): Promise<void> {
   if (!data || data.length < 5) return;
   const start = performance.now();
@@ -122,22 +126,22 @@ async function saveToCache(category: string, key: string, data: string): Promise
     try {
       const dbRef = ref(db, `world_brain_v12/${category}/${key}`);
       const setPromise = set(dbRef, data);
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000));
+      // Increased timeout to 10 seconds for uploads to be more resilient
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Etheric Timeout (10s)')), 10000));
       await Promise.race([setPromise, timeoutPromise]);
       addLog({ type: 'CACHE_DB', label: 'GLOBAL SAVE', duration: performance.now() - start, status: 'SUCCESS', message: `Knowledge uploaded to World Brain.` });
     } catch (e: any) {
       addLog({ type: 'ERROR', label: 'UPLOAD FAIL', duration: 0, status: 'ERROR', message: `World Brain upload failed: ${e.message}` });
+      // Fallback is already handled by local storage write above
     }
   }
 }
 
 /**
  * Generates Einstein's academic response using Gemini 3 Pro.
- * Uses eraKey for global synchronization of chapter intros.
  */
 export async function generateEinsteinResponse(prompt: string, history: any[], eraKey?: string): Promise<string> {
   const start = performance.now();
-  // If eraKey is provided, we use it as a canonical key for shared knowledge
   const cacheKey = eraKey ? await generateCacheKey(`era_${eraKey}`) : await generateCacheKey(JSON.stringify({ prompt, history }));
   
   const cached = await getFromCache('response', cacheKey, 'thought');
@@ -170,7 +174,6 @@ export async function generateEinsteinResponse(prompt: string, history: any[], e
 
 /**
  * Generates a chalkboard image using Gemini 2.5 Flash Image.
- * Uses eraKey for shared diagrams.
  */
 export async function generateChalkboardImage(prompt: string, eraKey?: string): Promise<string | null> {
   const start = performance.now();
@@ -217,7 +220,6 @@ export async function generateEinsteinSpeech(text: string): Promise<string | nul
   const cleanText = text.replace(/\[IMAGE:.*?\]/g, '').trim();
   if (!cleanText) return null;
 
-  // We hash the exact text for speech caching to ensure it matches specific thoughts
   const cacheKey = await generateCacheKey(`voice_${cleanText.substring(0, 100)}`);
   const cached = await getFromCache('speech', cacheKey, 'vocal');
   if (cached) return cached;
