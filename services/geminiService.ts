@@ -40,6 +40,7 @@ async function generateCacheKey(input: string): Promise<string> {
 
 async function getFromCache(category: string, key: string, dataType: string): Promise<any> {
   const start = performance.now();
+  const storageKey = `discovery_v12_${category}_${key}`;
   
   // Try World Brain (Global Sync)
   if (db) {
@@ -49,18 +50,26 @@ async function getFromCache(category: string, key: string, dataType: string): Pr
       if (snapshot.exists()) {
         const val = snapshot.val();
         addLog({ type: 'CACHE_DB', label: `GLOBAL HIT`, duration: performance.now() - start, status: 'CACHE_HIT', message: `Shared ${dataType} retrieved from World Brain.` });
-        localStorage.setItem(`discovery_v12_${category}_${key}`, val);
+        
+        // Sync to local if possible
+        try {
+          localStorage.setItem(storageKey, val);
+        } catch (e) {
+          // Local storage full, ignore
+        }
         return val;
       }
     } catch (e) {}
   }
 
   // Fallback to Local Memory
-  const local = localStorage.getItem(`discovery_v12_${category}_${key}`);
-  if (local) {
-    addLog({ type: 'CACHE_DB', label: `LOCAL HIT`, duration: performance.now() - start, status: 'CACHE_HIT', message: `Retrieved ${dataType} from local memory.` });
-    return local;
-  }
+  try {
+    const local = localStorage.getItem(storageKey);
+    if (local) {
+      addLog({ type: 'CACHE_DB', label: `LOCAL HIT`, duration: performance.now() - start, status: 'CACHE_HIT', message: `Retrieved ${dataType} from local memory.` });
+      return local;
+    }
+  } catch (e) {}
   
   return null;
 }
@@ -68,8 +77,24 @@ async function getFromCache(category: string, key: string, dataType: string): Pr
 async function saveToCache(category: string, key: string, data: string): Promise<void> {
   if (!data || data.length < 5) return;
   const start = performance.now();
-  localStorage.setItem(`discovery_v12_${category}_${key}`, data);
+  const storageKey = `discovery_v12_${category}_${key}`;
   
+  // Attempt Local Storage Save
+  try {
+    localStorage.setItem(storageKey, data);
+  } catch (e: any) {
+    if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+       addLog({ 
+         type: 'SYSTEM', 
+         label: 'MEM FULL', 
+         duration: 0, 
+         status: 'ERROR', 
+         message: 'Local storage quota exceeded. Image remains visible but unsaved locally.' 
+       });
+    }
+  }
+  
+  // Attempt World Brain Save
   if (db) {
     try {
       await set(ref(db, `world_brain_v12/${category}/${key}`), data);
@@ -138,7 +163,13 @@ export async function generateChalkboardImage(prompt: string, eraKey?: string): 
     }
 
     if (imageUrl) {
-      await saveToCache('image', cacheKey, imageUrl);
+      // If saving to cache fails, we still return the image URL
+      try {
+        await saveToCache('image', cacheKey, imageUrl);
+      } catch (cacheErr) {
+        // Log locally but don't throw - the user should still see the image
+        console.warn("Cache save ignored during image generation", cacheErr);
+      }
       addLog({ type: 'AI_IMAGE', label: 'OPTICS', duration: performance.now() - start, status: 'SUCCESS', message: 'Visual observation manifested on chalkboard.' });
     } else {
       addLog({ type: 'ERROR', label: 'OPTICS FAIL', duration: performance.now() - start, status: 'ERROR', message: 'Model returned content but no image data found.' });
