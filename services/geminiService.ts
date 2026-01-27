@@ -20,7 +20,7 @@ const addLog = (entry: Omit<LogEntry, 'id' | 'timestamp'>) => {
 };
 
 /**
- * v2.9 Resilient Global Knowledge Config
+ * v3.3 Resilient Global Knowledge Config
  * Specifically maps to gen-lang-client-0708024447 project for shared intelligence.
  */
 const getFirebaseConfig = () => {
@@ -33,37 +33,63 @@ const getFirebaseConfig = () => {
     storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || "gen-lang-client-0708024447.firebasestorage.app",
     messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || "372856387530",
     appId: env.VITE_FIREBASE_APP_ID || "1:372856387530:web:57c09241b68cfd1da24133",
-    databaseURL: env.VITE_FIREBASE_DATABASE_URL || "https://gen-lang-client-0708024447-default-rtdb.firebaseio.com/",
+    databaseURL: env.VITE_FIREBASE_DATABASE_URL || "https://gen-lang-client-0708024447.firebaseio.com/",
     measurementId: env.VITE_FIREBASE_MEASUREMENT_ID || "G-6PF7DJXBYR"
   };
-
-  addLog({ 
-    type: 'SYSTEM', 
-    label: 'COSMIC TRACE', 
-    duration: 0, 
-    status: 'SUCCESS', 
-    message: `Laboratory Registry: Project ${config.projectId} active.` 
-  });
 
   return config;
 };
 
+// Database state: remains null unless ping succeeds
 let db: any = null;
 const firebaseConfig = getFirebaseConfig();
 
-try {
-  if (firebaseConfig.projectId && firebaseConfig.apiKey) {
-    const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-    if (firebaseConfig.databaseURL) {
-      db = getDatabase(app, firebaseConfig.databaseURL);
-      addLog({ type: 'SYSTEM', label: 'WORLD BRAIN', duration: 0, status: 'SUCCESS', message: 'Synchronization path established.' });
+/**
+ * Robust Ping: Uses a direct fetch to the database REST endpoint to verify network availability.
+ */
+const verifyDatabaseAvailability = async () => {
+  const start = performance.now();
+  const pingUrl = `${firebaseConfig.databaseURL}/.json?shallow=true`;
+  
+  try {
+    // Attempt a shallow read via REST to verify actual reachability
+    const response = await fetch(pingUrl, { method: 'GET', mode: 'cors' });
+    
+    if (response.ok) {
+      const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+      db = getDatabase(app);
+      
+      addLog({ 
+        type: 'SYSTEM', 
+        label: 'WORLD BRAIN', 
+        duration: performance.now() - start, 
+        status: 'SUCCESS', 
+        message: `Connection established to ${firebaseConfig.databaseURL}. World Brain is active.` 
+      });
     } else {
-      addLog({ type: 'SYSTEM', label: 'WORLD BRAIN', duration: 0, status: 'SUCCESS', message: 'Local mode active (Missing DB URL).' });
+      db = null;
+      addLog({ 
+        type: 'ERROR', 
+        label: 'ETHERIC PING', 
+        duration: performance.now() - start, 
+        status: 'ERROR', 
+        message: `Database at ${firebaseConfig.databaseURL} returned status ${response.status}. Sync disabled.` 
+      });
     }
+  } catch (e: any) {
+    db = null;
+    addLog({ 
+      type: 'ERROR', 
+      label: 'PING FAIL', 
+      duration: performance.now() - start, 
+      status: 'ERROR', 
+      message: `Failed to reach ${firebaseConfig.databaseURL}: ${e.message}. System operating in local mode.` 
+    });
   }
-} catch (e: any) {
-  addLog({ type: 'ERROR', label: 'SYNC LAYER', duration: 0, status: 'ERROR', message: `Database init failed: ${e.message}` });
-}
+};
+
+// Immediate verification on module load
+verifyDatabaseAvailability();
 
 const getAI = () => {
   if (!process.env.API_KEY) {
@@ -79,18 +105,15 @@ async function generateCacheKey(input: string): Promise<string> {
   return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
 }
 
-/**
- * Fault-tolerant cache retrieval with increased timeout (8s).
- */
 async function getFromCache(category: string, key: string, dataType: string): Promise<any> {
   const start = performance.now();
   
+  // db is only truthy if verifyDatabaseAvailability promoted it
   if (db) {
     try {
       const dbRef = ref(db, `world_brain_v12/${category}/${key}`);
       const snapshotPromise = get(dbRef);
-      // Increased timeout to 8 seconds for retrieval
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Signal Timeout (8s)')), 8000));
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Signal Timeout (15s)')), 15000));
       const snapshot = await Promise.race([snapshotPromise, timeoutPromise]) as any;
 
       if (snapshot && snapshot.exists()) {
@@ -101,22 +124,18 @@ async function getFromCache(category: string, key: string, dataType: string): Pr
       }
     } catch (e: any) {
       addLog({ type: 'ERROR', label: `GLOBAL FAIL`, duration: 0, status: 'ERROR', message: `World Brain retrieval error: ${e.message}` });
-      addLog({ type: 'SYSTEM', label: `SYNC BYPASS`, duration: 0, status: 'SUCCESS', message: 'Checking local memories.' });
     }
   }
 
   const local = localStorage.getItem(`discovery_v12_${category}_${key}`);
   if (local) {
-    addLog({ type: 'CACHE_DB', label: `LOCAL HIT`, duration: performance.now() - start, status: 'CACHE_HIT', message: `Retrieved ${dataType} from memory.` });
+    addLog({ type: 'CACHE_DB', label: `LOCAL HIT`, duration: performance.now() - start, status: 'CACHE_HIT', message: `Retrieved ${dataType} from local storage.` });
     return local;
   }
   
   return null;
 }
 
-/**
- * Knowledge upload with increased timeout (10s) to prevent the reported failure.
- */
 async function saveToCache(category: string, key: string, data: string): Promise<void> {
   if (!data || data.length < 5) return;
   const start = performance.now();
@@ -126,20 +145,15 @@ async function saveToCache(category: string, key: string, data: string): Promise
     try {
       const dbRef = ref(db, `world_brain_v12/${category}/${key}`);
       const setPromise = set(dbRef, data);
-      // Increased timeout to 10 seconds for uploads to be more resilient
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Etheric Timeout (10s)')), 10000));
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Etheric Timeout (20s)')), 20000));
       await Promise.race([setPromise, timeoutPromise]);
       addLog({ type: 'CACHE_DB', label: 'GLOBAL SAVE', duration: performance.now() - start, status: 'SUCCESS', message: `Knowledge uploaded to World Brain.` });
     } catch (e: any) {
       addLog({ type: 'ERROR', label: 'UPLOAD FAIL', duration: 0, status: 'ERROR', message: `World Brain upload failed: ${e.message}` });
-      // Fallback is already handled by local storage write above
     }
   }
 }
 
-/**
- * Generates Einstein's academic response using Gemini 3 Pro.
- */
 export async function generateEinsteinResponse(prompt: string, history: any[], eraKey?: string): Promise<string> {
   const start = performance.now();
   const cacheKey = eraKey ? await generateCacheKey(`era_${eraKey}`) : await generateCacheKey(JSON.stringify({ prompt, history }));
@@ -147,7 +161,7 @@ export async function generateEinsteinResponse(prompt: string, history: any[], e
   const cached = await getFromCache('response', cacheKey, 'thought');
   if (cached) return cached;
 
-  addLog({ type: 'SYSTEM', label: 'KNOWLEDGE GAP', duration: 0, status: 'SUCCESS', message: eraKey ? `Generating canonical thought for ${eraKey}.` : 'No shared thought found. Consulting AI.' });
+  addLog({ type: 'SYSTEM', label: 'KNOWLEDGE GAP', duration: 0, status: 'SUCCESS', message: eraKey ? `Generating canonical thought for ${eraKey}.` : 'Consulting AI for new insights.' });
 
   try {
     const ai = getAI();
@@ -172,9 +186,6 @@ export async function generateEinsteinResponse(prompt: string, history: any[], e
   }
 }
 
-/**
- * Generates a chalkboard image using Gemini 2.5 Flash Image.
- */
 export async function generateChalkboardImage(prompt: string, eraKey?: string): Promise<string | null> {
   const start = performance.now();
   const cacheKey = eraKey ? await generateCacheKey(`img_${eraKey}`) : await generateCacheKey(prompt);
