@@ -62,7 +62,7 @@ try {
     }
   }
 } catch (e: any) {
-  addLog({ type: 'SYSTEM', label: 'SYNC LAYER', duration: 0, status: 'ERROR', message: `Database init failed: ${e.message}` });
+  addLog({ type: 'ERROR', label: 'SYNC LAYER', duration: 0, status: 'ERROR', message: `Database init failed: ${e.message}` });
 }
 
 const getAI = () => {
@@ -94,11 +94,12 @@ async function getFromCache(category: string, key: string, dataType: string): Pr
 
       if (snapshot && snapshot.exists()) {
         const val = snapshot.val();
-        addLog({ type: 'CACHE_DB', label: `GLOBAL HIT`, duration: performance.now() - start, status: 'CACHE_HIT', message: `Shared ${dataType} found in World Brain.` });
+        addLog({ type: 'CACHE_DB', label: `GLOBAL HIT`, duration: performance.now() - start, status: 'CACHE_HIT', message: `Shared ${dataType} retrieved from World Brain.` });
         localStorage.setItem(`discovery_v12_${category}_${key}`, val);
         return val;
       }
-    } catch (e) {
+    } catch (e: any) {
+      addLog({ type: 'ERROR', label: `GLOBAL FAIL`, duration: 0, status: 'ERROR', message: `World Brain retrieval error: ${e.message}` });
       addLog({ type: 'SYSTEM', label: `SYNC BYPASS`, duration: 0, status: 'SUCCESS', message: 'Checking local memories.' });
     }
   }
@@ -114,14 +115,19 @@ async function getFromCache(category: string, key: string, dataType: string): Pr
 
 async function saveToCache(category: string, key: string, data: string): Promise<void> {
   if (!data || data.length < 5) return;
+  const start = performance.now();
   try { localStorage.setItem(`discovery_v12_${category}_${key}`, data); } catch (e) {}
+  
   if (db) {
     try {
       const dbRef = ref(db, `world_brain_v12/${category}/${key}`);
       const setPromise = set(dbRef, data);
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000));
       await Promise.race([setPromise, timeoutPromise]);
-    } catch (e) {}
+      addLog({ type: 'CACHE_DB', label: 'GLOBAL SAVE', duration: performance.now() - start, status: 'SUCCESS', message: `Knowledge uploaded to World Brain.` });
+    } catch (e: any) {
+      addLog({ type: 'ERROR', label: 'UPLOAD FAIL', duration: 0, status: 'ERROR', message: `World Brain upload failed: ${e.message}` });
+    }
   }
 }
 
@@ -137,6 +143,8 @@ export async function generateEinsteinResponse(prompt: string, history: any[], e
   const cached = await getFromCache('response', cacheKey, 'thought');
   if (cached) return cached;
 
+  addLog({ type: 'SYSTEM', label: 'KNOWLEDGE GAP', duration: 0, status: 'SUCCESS', message: eraKey ? `Generating canonical thought for ${eraKey}.` : 'No shared thought found. Consulting AI.' });
+
   try {
     const ai = getAI();
     const response = await ai.models.generateContent({
@@ -151,11 +159,11 @@ export async function generateEinsteinResponse(prompt: string, history: any[], e
     const text = response.text || "Ach, ze universe remains a mystery.";
     await saveToCache('response', cacheKey, text);
     
-    addLog({ type: 'AI_TEXT', label: 'RELATIVITY', duration: performance.now() - start, status: 'SUCCESS', message: 'New thought materialized.' });
+    addLog({ type: 'AI_TEXT', label: 'RELATIVITY', duration: performance.now() - start, status: 'SUCCESS', message: 'New thought materialized from the ether.' });
     return text;
   } catch (e: any) {
     const errorMsg = `Ach! A disturbance: ${e.message}`;
-    addLog({ type: 'ERROR', label: 'VOID ERROR', duration: 0, status: 'ERROR', message: e.message });
+    addLog({ type: 'ERROR', label: 'VOID ERROR', duration: 0, status: 'ERROR', message: `AI generation failed: ${e.message}` });
     return errorMsg;
   }
 }
@@ -170,6 +178,8 @@ export async function generateChalkboardImage(prompt: string, eraKey?: string): 
   
   const cached = await getFromCache('image', cacheKey, 'visual');
   if (cached) return cached;
+
+  addLog({ type: 'SYSTEM', label: 'VISUAL GAP', duration: 0, status: 'SUCCESS', message: eraKey ? `Drafting shared visual for ${eraKey}.` : 'Creating new visual observation.' });
 
   try {
     const ai = getAI();
@@ -193,11 +203,11 @@ export async function generateChalkboardImage(prompt: string, eraKey?: string): 
 
     if (imageUrl) {
       await saveToCache('image', cacheKey, imageUrl);
-      addLog({ type: 'AI_IMAGE', label: 'OPTICS', duration: performance.now() - start, status: 'SUCCESS', message: 'Visual established.' });
+      addLog({ type: 'AI_IMAGE', label: 'OPTICS', duration: performance.now() - start, status: 'SUCCESS', message: 'Visual observation manifested on chalkboard.' });
     }
     return imageUrl;
   } catch (e: any) {
-    addLog({ type: 'ERROR', label: 'OPTIC FAIL', duration: 0, status: 'ERROR', message: e.message });
+    addLog({ type: 'ERROR', label: 'OPTIC FAIL', duration: 0, status: 'ERROR', message: `Visual generation error: ${e.message}` });
     return null;
   }
 }
@@ -226,11 +236,11 @@ export async function generateEinsteinSpeech(text: string): Promise<string | nul
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (base64Audio) {
       await saveToCache('speech', cacheKey, base64Audio);
-      addLog({ type: 'AI_AUDIO', label: 'HARMONY', duration: performance.now() - start, status: 'SUCCESS', message: 'Resonating sound waves.' });
+      addLog({ type: 'AI_AUDIO', label: 'HARMONY', duration: performance.now() - start, status: 'SUCCESS', message: 'Vocal frequencies captured.' });
     }
     return base64Audio || null;
   } catch (e: any) {
-    addLog({ type: 'ERROR', label: 'AUDIO FAIL', duration: 0, status: 'ERROR', message: e.message });
+    addLog({ type: 'ERROR', label: 'AUDIO FAIL', duration: 0, status: 'ERROR', message: `TTS generation error: ${e.message}` });
     return null;
   }
 }
