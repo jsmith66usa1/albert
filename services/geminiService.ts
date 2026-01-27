@@ -1,10 +1,12 @@
 
-import { GoogleGenAI, Modality, Type } from "@google/genai";
-import { initializeApp, getApps, getApp } from "firebase/app";
-import { getDatabase, ref, get, set } from "firebase/database";
+import { GoogleGenAI, Modality } from "@google/genai";
+import { ref, get, set, Database } from "firebase/database";
 import { LogEntry } from "../types";
+import { initWorldBrain } from "./firebase";
 
 let performanceLogs: LogEntry[] = [];
+let db: Database | null = null;
+
 export const getPerformanceLogs = () => [...performanceLogs];
 export const clearPerformanceLogs = () => { performanceLogs = []; };
 
@@ -19,82 +21,13 @@ const addLog = (entry: Omit<LogEntry, 'id' | 'timestamp'>) => {
   window.dispatchEvent(new CustomEvent('performance_log_updated', { detail: newLog }));
 };
 
-/**
- * v3.3 Resilient Global Knowledge Config
- * Specifically maps to gen-lang-client-0708024447 project for shared intelligence.
- */
-const getFirebaseConfig = () => {
-  const env = process.env;
-
-  const config = {
-    apiKey: env.VITE_FIREBASE_API_KEY || "AIzaSyATY0par56GqdPFSkN7aplC9GEcSwftwD0",
-    authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || "gen-lang-client-0708024447.firebaseapp.com",
-    projectId: env.VITE_FIREBASE_PROJECT_ID || "gen-lang-client-0708024447",
-    storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || "gen-lang-client-0708024447.firebasestorage.app",
-    messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || "372856387530",
-    appId: env.VITE_FIREBASE_APP_ID || "1:372856387530:web:57c09241b68cfd1da24133",
-    databaseURL: env.VITE_FIREBASE_DATABASE_URL || "https://gen-lang-client-0708024447.firebaseio.com/",
-    measurementId: env.VITE_FIREBASE_MEASUREMENT_ID || "G-6PF7DJXBYR"
-  };
-
-  return config;
-};
-
-// Database state: remains null unless ping succeeds
-let db: any = null;
-const firebaseConfig = getFirebaseConfig();
-
-/**
- * Robust Ping: Uses a direct fetch to the database REST endpoint to verify network availability.
- */
-const verifyDatabaseAvailability = async () => {
-  const start = performance.now();
-  const pingUrl = `${firebaseConfig.databaseURL}/.json?shallow=true`;
-  
-  try {
-    // Attempt a shallow read via REST to verify actual reachability
-    const response = await fetch(pingUrl, { method: 'GET', mode: 'cors' });
-    
-    if (response.ok) {
-      const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-      db = getDatabase(app);
-      
-      addLog({ 
-        type: 'SYSTEM', 
-        label: 'WORLD BRAIN', 
-        duration: performance.now() - start, 
-        status: 'SUCCESS', 
-        message: `Connection established to ${firebaseConfig.databaseURL}. World Brain is active.` 
-      });
-    } else {
-      db = null;
-      addLog({ 
-        type: 'ERROR', 
-        label: 'ETHERIC PING', 
-        duration: performance.now() - start, 
-        status: 'ERROR', 
-        message: `Database at ${firebaseConfig.databaseURL} returned status ${response.status}. Sync disabled.` 
-      });
-    }
-  } catch (e: any) {
-    db = null;
-    addLog({ 
-      type: 'ERROR', 
-      label: 'PING FAIL', 
-      duration: performance.now() - start, 
-      status: 'ERROR', 
-      message: `Failed to reach ${firebaseConfig.databaseURL}: ${e.message}. System operating in local mode.` 
-    });
-  }
-};
-
-// Immediate verification on module load
-verifyDatabaseAvailability();
+// Initialize World Brain on module load
+initWorldBrain(addLog).then(instance => {
+  db = instance;
+});
 
 const getAI = () => {
-  if (!process.env.API_KEY) {
-    throw new Error("Missing Laboratory Key (Gemini API Key).");
-  }
+  if (!process.env.API_KEY) throw new Error("Missing Laboratory Key (Gemini API Key).");
   return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
@@ -108,28 +41,24 @@ async function generateCacheKey(input: string): Promise<string> {
 async function getFromCache(category: string, key: string, dataType: string): Promise<any> {
   const start = performance.now();
   
-  // db is only truthy if verifyDatabaseAvailability promoted it
+  // Try World Brain (Global Sync)
   if (db) {
     try {
       const dbRef = ref(db, `world_brain_v12/${category}/${key}`);
-      const snapshotPromise = get(dbRef);
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Signal Timeout (15s)')), 15000));
-      const snapshot = await Promise.race([snapshotPromise, timeoutPromise]) as any;
-
-      if (snapshot && snapshot.exists()) {
+      const snapshot = await get(dbRef);
+      if (snapshot.exists()) {
         const val = snapshot.val();
         addLog({ type: 'CACHE_DB', label: `GLOBAL HIT`, duration: performance.now() - start, status: 'CACHE_HIT', message: `Shared ${dataType} retrieved from World Brain.` });
         localStorage.setItem(`discovery_v12_${category}_${key}`, val);
         return val;
       }
-    } catch (e: any) {
-      addLog({ type: 'ERROR', label: `GLOBAL FAIL`, duration: 0, status: 'ERROR', message: `World Brain retrieval error: ${e.message}` });
-    }
+    } catch (e) {}
   }
 
+  // Fallback to Local Memory
   const local = localStorage.getItem(`discovery_v12_${category}_${key}`);
   if (local) {
-    addLog({ type: 'CACHE_DB', label: `LOCAL HIT`, duration: performance.now() - start, status: 'CACHE_HIT', message: `Retrieved ${dataType} from local storage.` });
+    addLog({ type: 'CACHE_DB', label: `LOCAL HIT`, duration: performance.now() - start, status: 'CACHE_HIT', message: `Retrieved ${dataType} from local memory.` });
     return local;
   }
   
@@ -139,18 +68,13 @@ async function getFromCache(category: string, key: string, dataType: string): Pr
 async function saveToCache(category: string, key: string, data: string): Promise<void> {
   if (!data || data.length < 5) return;
   const start = performance.now();
-  try { localStorage.setItem(`discovery_v12_${category}_${key}`, data); } catch (e) {}
+  localStorage.setItem(`discovery_v12_${category}_${key}`, data);
   
   if (db) {
     try {
-      const dbRef = ref(db, `world_brain_v12/${category}/${key}`);
-      const setPromise = set(dbRef, data);
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Etheric Timeout (20s)')), 20000));
-      await Promise.race([setPromise, timeoutPromise]);
+      await set(ref(db, `world_brain_v12/${category}/${key}`), data);
       addLog({ type: 'CACHE_DB', label: 'GLOBAL SAVE', duration: performance.now() - start, status: 'SUCCESS', message: `Knowledge uploaded to World Brain.` });
-    } catch (e: any) {
-      addLog({ type: 'ERROR', label: 'UPLOAD FAIL', duration: 0, status: 'ERROR', message: `World Brain upload failed: ${e.message}` });
-    }
+    } catch (e) {}
   }
 }
 
@@ -160,8 +84,6 @@ export async function generateEinsteinResponse(prompt: string, history: any[], e
   
   const cached = await getFromCache('response', cacheKey, 'thought');
   if (cached) return cached;
-
-  addLog({ type: 'SYSTEM', label: 'KNOWLEDGE GAP', duration: 0, status: 'SUCCESS', message: eraKey ? `Generating canonical thought for ${eraKey}.` : 'Consulting AI for new insights.' });
 
   try {
     const ai = getAI();
@@ -180,9 +102,7 @@ export async function generateEinsteinResponse(prompt: string, history: any[], e
     addLog({ type: 'AI_TEXT', label: 'RELATIVITY', duration: performance.now() - start, status: 'SUCCESS', message: 'New thought materialized from the ether.' });
     return text;
   } catch (e: any) {
-    const errorMsg = `Ach! A disturbance: ${e.message}`;
-    addLog({ type: 'ERROR', label: 'VOID ERROR', duration: 0, status: 'ERROR', message: `AI generation failed: ${e.message}` });
-    return errorMsg;
+    return `Ach! A disturbance: ${e.message}`;
   }
 }
 
@@ -192,8 +112,6 @@ export async function generateChalkboardImage(prompt: string, eraKey?: string): 
   
   const cached = await getFromCache('image', cacheKey, 'visual');
   if (cached) return cached;
-
-  addLog({ type: 'SYSTEM', label: 'VISUAL GAP', duration: 0, status: 'SUCCESS', message: eraKey ? `Drafting shared visual for ${eraKey}.` : 'Creating new visual observation.' });
 
   try {
     const ai = getAI();
@@ -221,7 +139,6 @@ export async function generateChalkboardImage(prompt: string, eraKey?: string): 
     }
     return imageUrl;
   } catch (e: any) {
-    addLog({ type: 'ERROR', label: 'OPTIC FAIL', duration: 0, status: 'ERROR', message: `Visual generation error: ${e.message}` });
     return null;
   }
 }
@@ -241,9 +158,13 @@ export async function generateEinsteinSpeech(text: string): Promise<string | nul
       model: "gemini-2.5-flash-preview-tts",
       contents: [{ parts: [{ text: `Speak as Einstein: ${cleanText}` }] }],
       config: {
-        responseModalalities: [Modality.AUDIO],
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Charon' } } }
-      }
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName: 'Charon' },
+          },
+        },
+      },
     });
 
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
@@ -253,7 +174,6 @@ export async function generateEinsteinSpeech(text: string): Promise<string | nul
     }
     return base64Audio || null;
   } catch (e: any) {
-    addLog({ type: 'ERROR', label: 'AUDIO FAIL', duration: 0, status: 'ERROR', message: `TTS generation error: ${e.message}` });
     return null;
   }
 }
@@ -277,6 +197,7 @@ export async function decodeAudioData(
   const dataInt16 = new Int16Array(data.buffer);
   const frameCount = dataInt16.length / numChannels;
   const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+
   for (let channel = 0; channel < numChannels; channel++) {
     const channelData = buffer.getChannelData(channel);
     for (let i = 0; i < frameCount; i++) {
