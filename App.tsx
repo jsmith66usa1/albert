@@ -176,7 +176,8 @@ const EinsteinApp: React.FC = () => {
     }));
 
     try {
-      const responseText = await generateEinsteinResponse(promptText, history);
+      // Pass eraToSet as a hint for canonical chapterIntro caching
+      const responseText = await generateEinsteinResponse(promptText, history, isNewEra ? eraToSet : undefined);
       if (signal.aborted) return;
       
       const safeResponse = responseText || "Ach, ze stars are shy.";
@@ -188,7 +189,8 @@ const EinsteinApp: React.FC = () => {
       if (imageMatch) {
         setIsImageLoading(true);
         try {
-          const imageUrl = await generateChalkboardImage(imageMatch[1]);
+          // Shared images for chapter introductions
+          const imageUrl = await generateChalkboardImage(imageMatch[1], isNewEra ? eraToSet : undefined);
           if (!signal.aborted && imageUrl) setLastImage(imageUrl);
         } catch (e) {} finally {
           if (!signal.aborted) setIsImageLoading(false);
@@ -275,10 +277,6 @@ const EinsteinApp: React.FC = () => {
           <div className="chat-scroll-container no-scrollbar" ref={scrollContainerRef}>
             {messages.map((msg, idx) => (
               <div key={idx} className={`msg-container ${msg.role === 'einstein' ? 'bg-einstein' : 'bg-user'}`}>
-                {/* 
-                   Using a larger gap (gap-8) to create clear vertical separation 
-                   between blocks, simulating blank lines as requested.
-                */}
                 <div className="flex flex-col gap-8">
                   {msg.text.replace(/\[IMAGE:.*?\]/g, '').split(/\n\s*\n/).filter(p => p.trim()).map((paragraph, pIdx) => (
                     <p key={pIdx} className="leading-relaxed">{paragraph.trim()}</p>
