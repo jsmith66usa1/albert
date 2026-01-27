@@ -102,6 +102,7 @@ export async function generateEinsteinResponse(prompt: string, history: any[], e
     addLog({ type: 'AI_TEXT', label: 'RELATIVITY', duration: performance.now() - start, status: 'SUCCESS', message: 'New thought materialized from the ether.' });
     return text;
   } catch (e: any) {
+    addLog({ type: 'ERROR', label: 'GEN FAIL', duration: performance.now() - start, status: 'ERROR', message: `Thought failure: ${e.message}` });
     return `Ach! A disturbance: ${e.message}`;
   }
 }
@@ -117,15 +118,18 @@ export async function generateChalkboardImage(prompt: string, eraKey?: string): 
     const ai = getAI();
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
-      contents: { 
-        parts: [{ text: `A detailed chalkboard sketch: ${prompt}. Style: hand-drawn white chalk, mathematical diagrams, 1920s style.` }] 
-      },
-      config: { imageConfig: { aspectRatio: '16:9' } }
+      contents: [{ 
+        parts: [{ text: `A clear, high-contrast chalkboard diagram of: ${prompt}. Hand-drawn white chalk on black board, neat handwriting, scientific style.` }] 
+      }],
+      config: { 
+        imageConfig: { aspectRatio: '16:9' }
+      }
     });
 
     let imageUrl = null;
-    if (response.candidates && response.candidates[0].content.parts) {
-      for (const part of response.candidates[0].content.parts) {
+    const parts = response.candidates?.[0]?.content?.parts;
+    if (parts) {
+      for (const part of parts) {
         if (part.inlineData) {
           imageUrl = `data:image/png;base64,${part.inlineData.data}`;
           break;
@@ -136,9 +140,12 @@ export async function generateChalkboardImage(prompt: string, eraKey?: string): 
     if (imageUrl) {
       await saveToCache('image', cacheKey, imageUrl);
       addLog({ type: 'AI_IMAGE', label: 'OPTICS', duration: performance.now() - start, status: 'SUCCESS', message: 'Visual observation manifested on chalkboard.' });
+    } else {
+      addLog({ type: 'ERROR', label: 'OPTICS FAIL', duration: performance.now() - start, status: 'ERROR', message: 'Model returned content but no image data found.' });
     }
     return imageUrl;
   } catch (e: any) {
+    addLog({ type: 'ERROR', label: 'OPTICS FAIL', duration: performance.now() - start, status: 'ERROR', message: `Sketching failure: ${e.message}` });
     return null;
   }
 }
@@ -174,6 +181,7 @@ export async function generateEinsteinSpeech(text: string): Promise<string | nul
     }
     return base64Audio || null;
   } catch (e: any) {
+    addLog({ type: 'ERROR', label: 'HARMONY FAIL', duration: performance.now() - start, status: 'ERROR', message: `Vocal failure: ${e.message}` });
     return null;
   }
 }
