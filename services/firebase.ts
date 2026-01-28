@@ -1,7 +1,6 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
 import { getDatabase, Database } from "firebase/database";
 import { getAnalytics, Analytics } from "firebase/analytics";
-import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "firebase/app-check";
 
 // Verified configuration from Firebase Console
 export const firebaseConfig = {
@@ -17,103 +16,96 @@ export const firebaseConfig = {
 let appInstance: FirebaseApp;
 let dbInstance: Database | null = null;
 let analyticsInstance: Analytics | null = null;
+let initializationPromise: Promise<Database | null> | null = null;
 
 /**
- * Pings the database to verify availability.
- * Logs the URL and status code to the console and system logs.
- * Returns the database instance only if the connection is successful.
+ * Pings the database to verify availability ONCE per session.
+ * If successful, subsequent calls return the established instance.
+ * If failed, it will not attempt to ping or connect again for the session duration.
  */
 export const initWorldBrain = async (addLog: (entry: any) => void): Promise<Database | null> => {
-  const start = performance.now();
-  
-  // 1. Initialize Firebase App
-  if (getApps().length === 0) {
-    appInstance = initializeApp(firebaseConfig);
-    
-    // Optional: Initialize App Check if site key is provided
-    // try {
-    //   initializeAppCheck(appInstance, {
-    //     provider: new ReCaptchaEnterpriseProvider('YOUR_SITE_KEY'), 
-    //     isTokenAutoRefreshEnabled: true
-    //   });
-    // } catch (e) {}
-
-    // Initialize Analytics
-    try {
-      analyticsInstance = getAnalytics(appInstance);
-    } catch (e) {}
-  } else {
-    appInstance = getApp();
+  // Return the existing promise if we've already started or finished initialization
+  if (initializationPromise) {
+    return initializationPromise;
   }
 
-  // 2. Identify and Probe Database Endpoints
-  // We check both the modern 'default-rtdb' and the legacy naming conventions.
-  const urlsToProbe = [
-    `https://${firebaseConfig.projectId}-default-rtdb.firebaseio.com`,
-    `https://${firebaseConfig.projectId}.firebaseio.com`
-  ];
-
-  for (const baseUrl of urlsToProbe) {
-    const pingUrl = `${baseUrl}/.json?shallow=true`;
+  initializationPromise = (async () => {
+    const start = performance.now();
     
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3s timeout
-      
-      const response = await fetch(pingUrl, { 
-        method: 'GET', 
-        mode: 'cors',
-        signal: controller.signal
-      });
-      
-      clearTimeout(timeoutId);
-
-      // Log the specific URL and Status Code as requested
-      const statusMsg = `URL: ${baseUrl} | Status: ${response.status} ${response.statusText}`;
-      
-      if (response.ok) {
-        dbInstance = getDatabase(appInstance, baseUrl);
-        
-        addLog({ 
-          type: 'SYSTEM', 
-          label: 'ETHERIC PING', 
-          duration: performance.now() - start, 
-          status: 'SUCCESS', 
-          message: `Database online. ${statusMsg}` 
-        });
-        
-        return dbInstance;
-      } else {
-        addLog({ 
-          type: 'ERROR', 
-          label: 'ETHERIC PING', 
-          duration: performance.now() - start, 
-          status: 'ERROR', 
-          message: `Ping failed. ${statusMsg}. Check security rules or project provisioning.` 
-        });
-      }
-    } catch (e: any) {
-      addLog({ 
-        type: 'ERROR', 
-        label: 'NETWORK ERR', 
-        duration: performance.now() - start, 
-        status: 'ERROR', 
-        message: `Could not reach ${baseUrl}: ${e.name === 'AbortError' ? 'Timeout' : e.message}` 
-      });
+    // 1. Initialize Firebase App (only once)
+    if (getApps().length === 0) {
+      appInstance = initializeApp(firebaseConfig);
+      try {
+        analyticsInstance = getAnalytics(appInstance);
+      } catch (e) {}
+    } else {
+      appInstance = getApp();
     }
-  }
 
-  // 3. Final Fallback: If no probe succeeds, ensure the database is NOT used.
-  dbInstance = null;
-  addLog({ 
-    type: 'ERROR', 
-    label: 'SYNC DISABLED', 
-    duration: 0, 
-    status: 'ERROR', 
-    message: "Shared World Brain is unavailable. Local memory mode only." 
-  });
-  
-  return null;
+    // 2. Identify and Probe Database Endpoints
+    const urlsToProbe = [
+      `https://${firebaseConfig.projectId}-default-rtdb.firebaseio.com`,
+      `https://${firebaseConfig.projectId}.firebaseio.com`
+    ];
+
+    for (const baseUrl of urlsToProbe) {
+      const pingUrl = `${baseUrl}/.json?shallow=true`;
+      
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3s timeout
+        
+        const response = await fetch(pingUrl, { 
+          method: 'GET', 
+          mode: 'cors',
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+
+        const statusMsg = `URL: ${baseUrl} | Status: ${response.status}`;
+        
+        if (response.ok) {
+          dbInstance = getDatabase(appInstance, baseUrl);
+          
+          addLog({ 
+            type: 'SYSTEM', 
+            label: 'ETHERIC PING', 
+            duration: performance.now() - start, 
+            status: 'SUCCESS', 
+            message: `Shared Brain Linked. ${statusMsg}` 
+          });
+          
+          return dbInstance;
+        } else {
+          addLog({ 
+            type: 'ERROR', 
+            label: 'ETHERIC PING', 
+            duration: performance.now() - start, 
+            status: 'ERROR', 
+            message: `Ping failed. ${statusMsg}.` 
+          });
+        }
+      } catch (e: any) {
+        // Log individual probe failure but continue loop to check other possible URLs
+        console.debug(`Probe to ${baseUrl} failed or timed out.`);
+      }
+    }
+
+    // 3. Final Fallback: If no probe succeeds, ensure the database is NOT used.
+    dbInstance = null;
+    addLog({ 
+      type: 'ERROR', 
+      label: 'SYNC DISABLED', 
+      duration: 0, 
+      status: 'ERROR', 
+      message: "One-time ping failed. Shared World Brain disabled for this session." 
+    });
+    
+    return null;
+  })();
+
+  return initializationPromise;
 };
 
 export const getDb = () => dbInstance;
