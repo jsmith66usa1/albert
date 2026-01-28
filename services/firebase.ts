@@ -7,6 +7,7 @@ export const firebaseConfig = {
   apiKey: "AIzaSyATY0par56GqdPFSkN7aplC9GEcSwftwD0",
   authDomain: "gen-lang-client-0708024447.firebaseapp.com",
   projectId: "gen-lang-client-0708024447",
+  databaseURL: "https://gen-lang-client-0708024447.firebaseio.com",
   storageBucket: "gen-lang-client-0708024447.firebasestorage.app",
   messagingSenderId: "372856387530",
   appId: "1:372856387530:web:57c09241b68cfd1da24133",
@@ -15,99 +16,92 @@ export const firebaseConfig = {
 
 let appInstance: FirebaseApp;
 let dbInstance: Database | null = null;
-let analyticsInstance: Analytics | null = null;
-let initializationPromise: Promise<Database | null> | null = null;
+let pingHasRun = false;
 
 /**
- * Pings the database to verify availability ONCE per session.
- * If successful, subsequent calls return the established instance.
- * If failed, it will not attempt to ping or connect again for the session duration.
+ * Initializes the Firebase connection without performing an immediate ping.
+ * Diagnostics are deferred until a real operation fails.
  */
 export const initWorldBrain = async (addLog: (entry: any) => void): Promise<Database | null> => {
-  // Return the existing promise if we've already started or finished initialization
-  if (initializationPromise) {
-    return initializationPromise;
-  }
-
-  initializationPromise = (async () => {
-    const start = performance.now();
-    
-    // 1. Initialize Firebase App (only once)
+  try {
     if (getApps().length === 0) {
       appInstance = initializeApp(firebaseConfig);
       try {
-        analyticsInstance = getAnalytics(appInstance);
+        getAnalytics(appInstance);
       } catch (e) {}
     } else {
       appInstance = getApp();
     }
 
-    // 2. Identify and Probe Database Endpoints
-    const urlsToProbe = [
-      `https://${firebaseConfig.projectId}-default-rtdb.firebaseio.com`,
-      `https://${firebaseConfig.projectId}.firebaseio.com`
-    ];
+    // Using the databaseURL from the config for consistency
+    dbInstance = getDatabase(appInstance, firebaseConfig.databaseURL);
+    return dbInstance;
+  } catch (err: any) {
+    addLog({
+      type: 'ERROR',
+      label: 'INIT FAIL',
+      duration: 0,
+      status: 'ERROR',
+      message: `Database initialization failed: ${err.message}`,
+      source: 'firebase.ts:38'
+    });
+    return null;
+  }
+};
 
-    for (const baseUrl of urlsToProbe) {
-      const pingUrl = `${baseUrl}/.json?shallow=true`;
-      
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3s timeout
-        
-        const response = await fetch(pingUrl, { 
-          method: 'GET', 
-          mode: 'cors',
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
+/**
+ * Performs a diagnostic ping to the specific .json endpoint to log failure details.
+ * This runs exactly once per session if a database operation fails.
+ */
+export const runDiagnosticPing = async (addLog: (entry: any) => void): Promise<void> => {
+  if (pingHasRun) return;
+  pingHasRun = true;
 
-        const statusMsg = `URL: ${baseUrl} | Status: ${response.status}`;
-        
-        if (response.ok) {
-          dbInstance = getDatabase(appInstance, baseUrl);
-          
-          addLog({ 
-            type: 'SYSTEM', 
-            label: 'ETHERIC PING', 
-            duration: performance.now() - start, 
-            status: 'SUCCESS', 
-            message: `Shared Brain Linked. ${statusMsg}` 
-          });
-          
-          return dbInstance;
-        } else {
-          addLog({ 
-            type: 'ERROR', 
-            label: 'ETHERIC PING', 
-            duration: performance.now() - start, 
-            status: 'ERROR', 
-            message: `Ping failed. ${statusMsg}.` 
-          });
-        }
-      } catch (e: any) {
-        // Log individual probe failure but continue loop to check other possible URLs
-        console.debug(`Probe to ${baseUrl} failed or timed out.`);
-      }
-    }
+  const start = performance.now();
+  const pingUrl = `${firebaseConfig.databaseURL}/.json`;
 
-    // 3. Final Fallback: If no probe succeeds, ensure the database is NOT used.
-    dbInstance = null;
-    addLog({ 
-      type: 'ERROR', 
-      label: 'SYNC DISABLED', 
-      duration: 0, 
-      status: 'ERROR', 
-      message: "One-time ping failed. Shared World Brain disabled for this session." 
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    
+    const response = await fetch(pingUrl, { 
+      method: 'GET', 
+      mode: 'cors',
+      signal: controller.signal
     });
     
-    return null;
-  })();
+    clearTimeout(timeoutId);
 
-  return initializationPromise;
+    if (response.ok) {
+      addLog({ 
+        type: 'SYSTEM', 
+        label: 'ETHERIC PING', 
+        duration: performance.now() - start, 
+        status: 'SUCCESS', 
+        message: `Manual ping successful (Status: ${response.status}). Connectivity is established.`,
+        source: 'firebase.ts:77'
+      });
+    } else {
+      addLog({ 
+        type: 'ERROR', 
+        label: 'ETHERIC PING', 
+        duration: performance.now() - start, 
+        status: 'ERROR', 
+        message: `Manual ping rejected (Status: ${response.status}). Check security rules.`,
+        source: 'firebase.ts:85'
+      });
+    }
+  } catch (e: any) {
+    const isTimeout = e.name === 'AbortError';
+    addLog({ 
+      type: 'ERROR', 
+      label: 'ETHERIC PING', 
+      duration: performance.now() - start, 
+      status: 'ERROR', 
+      message: `Diagnostic failed: ${isTimeout ? 'Request timed out' : e.message}. Check network connection.`,
+      source: 'firebase.ts:95'
+    });
+  }
 };
 
 export const getDb = () => dbInstance;
-export const getAppInstance = () => appInstance;
-export const getAnalyticsInstance = () => analyticsInstance;

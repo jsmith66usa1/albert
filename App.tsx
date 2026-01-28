@@ -176,7 +176,6 @@ const EinsteinApp: React.FC = () => {
     }));
 
     try {
-      // Pass eraToSet as a hint for canonical chapterIntro caching
       const responseText = await generateEinsteinResponse(promptText, history, isNewEra ? eraToSet : undefined);
       if (signal.aborted) return;
       
@@ -189,7 +188,6 @@ const EinsteinApp: React.FC = () => {
       if (imageMatch) {
         setIsImageLoading(true);
         try {
-          // Shared images for chapter introductions
           const imageUrl = await generateChalkboardImage(imageMatch[1], isNewEra ? eraToSet : undefined);
           if (!signal.aborted && imageUrl) setLastImage(imageUrl);
         } catch (e) {} finally {
@@ -236,7 +234,10 @@ const EinsteinApp: React.FC = () => {
                       <span>{log.message}</span>
                       <span className="opacity-30 text-[10px]">{new Date(log.timestamp).toLocaleTimeString()}</span>
                     </div>
-                    {log.duration > 0 && <div className="text-[10px] opacity-40 mt-1">Registry Latency: {log.duration.toFixed(0)}ms</div>}
+                    <div className="flex justify-between items-center mt-1">
+                      {log.source && <span className="text-[9px] opacity-60 font-mono text-emerald-400">Source: {log.source}</span>}
+                      {log.duration > 0 && <div className="text-[10px] opacity-40">Registry Latency: {log.duration.toFixed(0)}ms</div>}
+                    </div>
                   </div>
                 </div>
               ))

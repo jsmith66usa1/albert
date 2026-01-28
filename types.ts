@@ -34,5 +34,6 @@ export interface LogEntry {
   status: 'SUCCESS' | 'ERROR' | 'CACHE_HIT';
   message: string;
   timestamp: number;
+  source?: string;
   metadata?: any;
 }
