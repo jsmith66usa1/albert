@@ -72,26 +72,31 @@ async function getFromStaticServer(type: 'text' | 'images', eraKey: string): Pro
   const prefix = type === 'text' ? 'einstein-discussion-' : 'einstein-diagram-';
   const extension = type === 'text' ? 'txt' : 'jpg';
   
+  // Remove all spaces for the filename
   const noSpaceKey = eraKey.replace(/\s+/g, '');
   const fileName = `${prefix}${noSpaceKey}.${extension}`;
   
-  const primaryPath = `${directory}/${fileName}`;
-  const secondaryPath = `./${directory}/${fileName}`;
-  const rootPath = fileName;
-
-  const pathsToTry = [primaryPath, secondaryPath, rootPath];
+  // Exhaustive path list to handle root vs subdirectory deployments
+  const pathsToTry = [
+    `${directory}/${fileName}`,      // Relative to app root
+    `./${directory}/${fileName}`,    // Relative with dot
+    `/${directory}/${fileName}`,     // Absolute from domain root
+    fileName,                        // Flat relative
+    `./${fileName}`,                 // Flat relative dot
+    `/${fileName}`                   // Flat absolute
+  ];
 
   for (const urlToFetch of pathsToTry) {
-    addLog({ 
-      type: 'CACHE_DB', 
-      label: 'STATIC PROBE', 
-      duration: 0, 
-      status: 'SUCCESS', 
-      message: `Probing static library: ${urlToFetch}`, 
-      source: 'geminiService.ts' 
-    });
-
     try {
+      addLog({ 
+        type: 'CACHE_DB', 
+        label: 'STATIC PROBE', 
+        duration: 0, 
+        status: 'SUCCESS', 
+        message: `Probing static library: ${urlToFetch}`, 
+        source: 'geminiService.ts' 
+      });
+
       const response = await fetch(urlToFetch, { cache: 'no-cache' });
       
       if (!response.ok) {
@@ -126,7 +131,7 @@ async function getFromStaticServer(type: 'text' | 'images', eraKey: string): Pro
           label: 'SERVER HIT', 
           duration: performance.now() - start, 
           status: 'CACHE_HIT', 
-          message: `SUCCESS: Static archive loaded.`, 
+          message: `SUCCESS: Static archive loaded from ${urlToFetch}`, 
           source: 'geminiService.ts' 
         });
         return text;
@@ -138,7 +143,7 @@ async function getFromStaticServer(type: 'text' | 'images', eraKey: string): Pro
             label: 'SERVER HIT', 
             duration: performance.now() - start, 
             status: 'CACHE_HIT', 
-            message: `SUCCESS: Static diagram loaded.`, 
+            message: `SUCCESS: Static diagram loaded from ${urlToFetch}`, 
             source: 'geminiService.ts' 
           });
           return URL.createObjectURL(blob);
@@ -150,7 +155,7 @@ async function getFromStaticServer(type: 'text' | 'images', eraKey: string): Pro
         label: 'FETCH ERR', 
         duration: 0, 
         status: 'ERROR', 
-        message: `Network failure fetching static asset.`, 
+        message: `Network failure fetching ${urlToFetch}: ${e.message}`, 
         source: 'geminiService.ts' 
       });
     }
@@ -177,7 +182,7 @@ async function getFromCache(category: string, key: string, dataType: string): Pr
             label: `IDB HIT`, 
             duration: performance.now() - start, 
             status: 'CACHE_HIT', 
-            message: `Retrieved ${dataType} from local laboratory storage.`, 
+            message: `Retrieved ${dataType} from local storage.`, 
             source: 'geminiService.ts' 
           });
           resolve(request.result);
@@ -208,7 +213,7 @@ async function saveToCache(category: string, key: string, data: string): Promise
       label: 'IDB SAVE', 
       duration: performance.now() - start, 
       status: 'SUCCESS', 
-      message: `Content archived in local laboratory database.`, 
+      message: `Content archived in local database.`, 
       source: 'geminiService.ts' 
     });
   } catch (e: any) {
@@ -312,7 +317,7 @@ export async function generateChalkboardImage(description: string, eraKey?: stri
         label: 'GEMINI IMAGE',
         duration: performance.now() - start,
         status: 'SUCCESS',
-        message: 'Successfully sketched on ze chalkboard via AI.',
+        message: 'Successfully sketched on ze chalkboard.',
         source: 'geminiService.ts'
       });
       return imageUrl;
@@ -332,19 +337,23 @@ export async function generateChalkboardImage(description: string, eraKey?: stri
 }
 
 /**
- * Enhanced TTS with Retry logic to handle "Internal error encountered" (500)
+ * Enhanced TTS with exponential backoff and retry logic
  */
 export async function generateEinsteinSpeech(text: string): Promise<string | null> {
   const maxRetries = 3;
   let retryCount = 0;
   
-  const attemptSpeech = async (instructionPrefix: string): Promise<string | null> => {
+  const attemptSpeech = async (isSimplified: boolean): Promise<string | null> => {
     const start = performance.now();
     try {
       const ai = getAI();
+      const instruction = isSimplified 
+        ? "Say this in the voice of Albert Einstein" 
+        : "Say this with a warm, inquisitive, wise, and distinctly German-accented tone, phonetically pronouncing 'the' as 'ze' and 'that' as 'zat'";
+      
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: `${instructionPrefix}: ${text}` }] }],
+        contents: [{ parts: [{ text: `${instruction}: ${text}` }] }],
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
@@ -381,19 +390,14 @@ export async function generateEinsteinSpeech(text: string): Promise<string | nul
     }
   };
 
-  const fullInstruction = "Say this with a warm, inquisitive, wise, and distinctly German-accented tone, phonetically pronouncing 'the' as 'ze' and 'that' as 'zat'";
-  const simpleInstruction = "Say this as Professor Einstein";
-
   while (retryCount < maxRetries) {
     try {
-      // On third attempt, use simple instruction to avoid synthesis logic complexity errors
-      const currentInstruction = retryCount < 2 ? fullInstruction : simpleInstruction;
-      return await attemptSpeech(currentInstruction);
+      // Third attempt uses a simplified prompt to bypass potential synthesis complexity issues
+      return await attemptSpeech(retryCount === maxRetries - 1);
     } catch (e: any) {
       retryCount++;
       if (retryCount >= maxRetries) return null;
       
-      // Exponential backoff: 1s, 2s
       const delay = Math.pow(2, retryCount - 1) * 1000;
       await new Promise(resolve => setTimeout(resolve, delay));
     }
