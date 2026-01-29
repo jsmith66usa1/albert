@@ -1,10 +1,7 @@
 import { GoogleGenAI, Modality } from "@google/genai";
-import { doc, getDoc, setDoc, Firestore } from "firebase/firestore";
 import { LogEntry } from "../types";
-import { initWorldBrain, runDiagnosticPing } from "./firebase";
 
 let performanceLogs: LogEntry[] = [];
-let db: Firestore | null = null;
 
 export const getPerformanceLogs = () => [...performanceLogs];
 export const clearPerformanceLogs = () => { performanceLogs = []; };
@@ -19,11 +16,6 @@ const addLog = (entry: Omit<LogEntry, 'id' | 'timestamp'>) => {
   performanceLogs = [newLog, ...performanceLogs].slice(0, 100);
   window.dispatchEvent(new CustomEvent('performance_log_updated', { detail: newLog }));
 };
-
-// Initialize World Brain (Firestore) on module load
-initWorldBrain(addLog).then(instance => {
-  db = instance;
-});
 
 const getAI = () => {
   if (!process.env.API_KEY) throw new Error("Missing Laboratory Key (Gemini API Key).");
@@ -41,31 +33,17 @@ async function getFromCache(category: string, key: string, dataType: string): Pr
   const start = performance.now();
   const storageKey = `discovery_v12_${category}_${key}`;
   
-  // 1. Try World Brain (Firestore Global Sync)
-  if (db) {
-    try {
-      const docRef = doc(db, 'world_brain_v12', `${category}_${key}`);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        const val = docSnap.data().value;
-        addLog({ type: 'CACHE_DB', label: `GLOBAL HIT`, duration: performance.now() - start, status: 'CACHE_HIT', message: `Shared ${dataType} retrieved from World Brain.`, source: 'geminiService.ts:51' });
-        
-        try {
-          localStorage.setItem(storageKey, val);
-        } catch (e) {}
-        return val;
-      }
-    } catch (e: any) {
-      await runDiagnosticPing(addLog);
-      addLog({ type: 'ERROR', label: 'WORLD BRAIN ERR', duration: performance.now() - start, status: 'ERROR', message: `Cloud read failure: ${e.message}`, source: 'geminiService.ts:60' });
-    }
-  }
-
-  // 2. Fallback to Local Memory
   try {
     const local = localStorage.getItem(storageKey);
     if (local) {
-      addLog({ type: 'CACHE_DB', label: `LOCAL HIT`, duration: performance.now() - start, status: 'CACHE_HIT', message: `Retrieved ${dataType} from local memory.`, source: 'geminiService.ts:68' });
+      addLog({ 
+        type: 'CACHE_DB', 
+        label: `LOCAL HIT`, 
+        duration: performance.now() - start, 
+        status: 'CACHE_HIT', 
+        message: `Retrieved ${dataType} from local memory.`, 
+        source: 'geminiService.ts:40' 
+      });
       return local;
     }
   } catch (e) {}
@@ -78,9 +56,16 @@ async function saveToCache(category: string, key: string, data: string): Promise
   const start = performance.now();
   const storageKey = `discovery_v12_${category}_${key}`;
   
-  // Attempt Local Storage Save
   try {
     localStorage.setItem(storageKey, data);
+    addLog({ 
+      type: 'CACHE_DB', 
+      label: 'LOCAL SAVE', 
+      duration: performance.now() - start, 
+      status: 'SUCCESS', 
+      message: `Knowledge saved to local laboratory storage.`, 
+      source: 'geminiService.ts:57' 
+    });
   } catch (e: any) {
     if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
        addLog({ 
@@ -89,19 +74,8 @@ async function saveToCache(category: string, key: string, data: string): Promise
          duration: 0, 
          status: 'ERROR', 
          message: 'Local storage quota exceeded. Image remains visible but unsaved locally.',
-         source: 'geminiService.ts:91'
+         source: 'geminiService.ts:66'
        });
-    }
-  }
-  
-  // Attempt World Brain (Firestore) Save
-  if (db) {
-    try {
-      await setDoc(doc(db, 'world_brain_v12', `${category}_${key}`), { value: data, timestamp: Date.now() });
-      addLog({ type: 'CACHE_DB', label: 'GLOBAL SAVE', duration: performance.now() - start, status: 'SUCCESS', message: `Knowledge uploaded to World Brain.`, source: 'geminiService.ts:102' });
-    } catch (e: any) {
-      await runDiagnosticPing(addLog);
-      addLog({ type: 'ERROR', label: 'WORLD BRAIN ERR', duration: performance.now() - start, status: 'ERROR', message: `Cloud write failure: ${e.message}`, source: 'geminiService.ts:105' });
     }
   }
 }
@@ -116,7 +90,7 @@ export async function generateEinsteinResponse(prompt: string, history: any[], e
   try {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-3-flash-preview',
       contents: [...history, { role: 'user', parts: [{ text: prompt }] }],
       config: {
         systemInstruction: "You are Professor Albert Einstein. Address the user as 'My dear friend'. Be whimsical, humble, and academic. Use metaphors. If you generate an image tag, use the format [IMAGE: description]. Ensure your response contains equations in LaTeX format.",
@@ -127,10 +101,10 @@ export async function generateEinsteinResponse(prompt: string, history: any[], e
     const text = response.text || "Ach, ze universe remains a mystery.";
     await saveToCache('response', cacheKey, text);
     
-    addLog({ type: 'AI_TEXT', label: 'RELATIVITY', duration: performance.now() - start, status: 'SUCCESS', message: 'New thought materialized from the ether.', source: 'geminiService.ts:133' });
+    addLog({ type: 'AI_TEXT', label: 'RELATIVITY', duration: performance.now() - start, status: 'SUCCESS', message: 'New thought materialized from the ether.', source: 'geminiService.ts:94' });
     return text;
   } catch (e: any) {
-    addLog({ type: 'ERROR', label: 'GEN FAIL', duration: performance.now() - start, status: 'ERROR', message: `Thought failure: ${e.message}`, source: 'geminiService.ts:136' });
+    addLog({ type: 'ERROR', label: 'GEN FAIL', duration: performance.now() - start, status: 'ERROR', message: `Thought failure: ${e.message}`, source: 'geminiService.ts:97' });
     return `Ach! A disturbance: ${e.message}`;
   }
 }
@@ -147,7 +121,7 @@ export async function generateChalkboardImage(prompt: string, eraKey?: string): 
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: [{ 
-        parts: [{ text: `A clear, high-contrast chalkboard diagram of: ${prompt}. Hand-drawn white chalk on black board, neat handwriting, scientific style.` }] 
+        parts: [{ text: `A simple, clear chalkboard sketch: ${prompt}. White chalk on black, scientific diagram style.` }] 
       }],
       config: { 
         imageConfig: { aspectRatio: '16:9' }
@@ -169,13 +143,13 @@ export async function generateChalkboardImage(prompt: string, eraKey?: string): 
       try {
         await saveToCache('image', cacheKey, imageUrl);
       } catch (cacheErr) {}
-      addLog({ type: 'AI_IMAGE', label: 'OPTICS', duration: performance.now() - start, status: 'SUCCESS', message: 'Visual observation manifested on chalkboard.', source: 'geminiService.ts:175' });
+      addLog({ type: 'AI_IMAGE', label: 'OPTICS', duration: performance.now() - start, status: 'SUCCESS', message: 'Visual observation manifested on chalkboard.', source: 'geminiService.ts:136' });
     } else {
-      addLog({ type: 'ERROR', label: 'OPTICS FAIL', duration: performance.now() - start, status: 'ERROR', message: 'Model returned content but no image data found.', source: 'geminiService.ts:177' });
+      addLog({ type: 'ERROR', label: 'OPTICS FAIL', duration: performance.now() - start, status: 'ERROR', message: 'Model returned content but no image data found.', source: 'geminiService.ts:138' });
     }
     return imageUrl;
   } catch (e: any) {
-    addLog({ type: 'ERROR', label: 'OPTICS FAIL', duration: performance.now() - start, status: 'ERROR', message: `Sketching failure: ${e.message}`, source: 'geminiService.ts:181' });
+    addLog({ type: 'ERROR', label: 'OPTICS FAIL', duration: performance.now() - start, status: 'ERROR', message: `Sketching failure: ${e.message}`, source: 'geminiService.ts:142' });
     return null;
   }
 }
@@ -207,11 +181,11 @@ export async function generateEinsteinSpeech(text: string): Promise<string | nul
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (base64Audio) {
       await saveToCache('speech', cacheKey, base64Audio);
-      addLog({ type: 'AI_AUDIO', label: 'HARMONY', duration: performance.now() - start, status: 'SUCCESS', message: 'Vocal frequencies captured.', source: 'geminiService.ts:213' });
+      addLog({ type: 'AI_AUDIO', label: 'HARMONY', duration: performance.now() - start, status: 'SUCCESS', message: 'Vocal frequencies captured.', source: 'geminiService.ts:174' });
     }
     return base64Audio || null;
   } catch (e: any) {
-    addLog({ type: 'ERROR', label: 'HARMONY FAIL', duration: performance.now() - start, status: 'ERROR', message: `Vocal failure: ${e.message}`, source: 'geminiService.ts:217' });
+    addLog({ type: 'ERROR', label: 'HARMONY FAIL', duration: performance.now() - start, status: 'ERROR', message: `Vocal failure: ${e.message}`, source: 'geminiService.ts:178' });
     return null;
   }
 }

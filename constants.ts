@@ -5,7 +5,7 @@ export const CHAPTERS: Chapter[] = [
     id: Era.Introduction,
     title: "The Observation Deck",
     description: "Welcome to my laboratory, my dear friend. Let us gaze into the history of thought.",
-    prompt: "You are Professor Albert Einstein. Address the user as 'My dear friend'. Introduce the 'Einstein's Universe' experience. Explain that we will journey through several pivotal eras of math. Keep it whimsical, humble, and academic. End by asking if they are ready to explore the Foundations of ancient tally marks and Egyptian geometry."
+    prompt: "You are Professor Albert Einstein. Address the user as 'My dear friend'. Introduce the 'Einstein's Universe' experience. Explain that we will journey through several pivotal eras of math. Keep it whimsical, humble, and academic. End by asking if they are ready to explore the Foundations of ancient tally marks and Egyptian geometry. Generate a [IMAGE: A friendly chalkboard sketch of Professor Einstein with his signature wild hair and a warm, inquisitive smile]."
   },
   {
     id: Era.Foundations,

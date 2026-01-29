@@ -99,6 +99,45 @@ const EinsteinApp: React.FC = () => {
     setCurrentlySpeakingId(null);
   }, []);
 
+  const downloadConversation = () => {
+    if (messages.length === 0) return;
+    const content = messages.map(m => `${m.role.toUpperCase()}: ${m.text.replace(/\[IMAGE:.*?\]/g, '')}`).join('\n\n');
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `einstein-discussion-${currentEra}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadChalkboard = () => {
+    if (!lastImage) return;
+    
+    // Convert to JPEG before downloading
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // JPEG doesn't support transparency, so we fill with black background (chalkboard style)
+        ctx.fillStyle = "#000000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+        
+        const jpegUrl = canvas.toDataURL('image/jpeg', 0.9);
+        const a = document.createElement('a');
+        a.href = jpegUrl;
+        a.download = `einstein-diagram-${currentEra}.jpg`;
+        a.click();
+      }
+    };
+    img.src = lastImage;
+  };
+
   const playSpeech = async (text: string, msgId: number) => {
     if (isLoading || isImageLoading) return; 
     if (currentlySpeakingId === msgId && (isAudioPlaying || isSpeechLoading)) {
@@ -167,34 +206,61 @@ const EinsteinApp: React.FC = () => {
     setIsDropdownOpen(false);
     stopAudio();
 
-    if (isNewEra) { setMessages([]); setLastImage(null); } 
-    else { setMessages(prev => [...prev, { role: 'user', text: promptText, timestamp: Date.now() }]); }
+    if (isNewEra) { 
+      setMessages([]); 
+      setLastImage(null); 
+    } else { 
+      setMessages(prev => [...prev, { role: 'user', text: promptText, timestamp: Date.now() }]); 
+    }
 
     const history = isNewEra ? [] : [...messages].map(m => ({
       role: m.role === 'einstein' ? 'model' : 'user',
       parts: [{ text: m.text }]
     }));
 
+    // Optimistic Image Generation: If it's a known Era, start the image task immediately in parallel.
+    let parallelImagePromise: Promise<string | null> | null = null;
+    if (eraToSet) {
+      const chapter = CHAPTERS.find(c => c.id === eraToSet);
+      const match = chapter?.prompt.match(/\[IMAGE: (.*?)\]/);
+      if (match) {
+        setIsImageLoading(true);
+        parallelImagePromise = generateChalkboardImage(match[1], eraToSet);
+      }
+    }
+
     try {
-      const responseText = await generateEinsteinResponse(promptText, history, isNewEra ? eraToSet : undefined);
+      const textPromise = generateEinsteinResponse(promptText, history, isNewEra ? eraToSet : undefined);
+      
+      // Wait for the text response first to maintain conversational flow.
+      const responseText = await textPromise;
       if (signal.aborted) return;
       
-      const safeResponse = responseText || "Ach, ze stars are shy.";
+      const safeResponse = responseText || "Ach, ze universe remains a mystery.";
       const imageMatch = safeResponse.match(/\[IMAGE: (.*?)\]/);
       
       setMessages(prev => [...prev, { role: 'einstein', text: safeResponse, timestamp: Date.now() }]);
       if (eraToSet) setCurrentEra(eraToSet);
 
-      if (imageMatch) {
+      // Handle the image result from the parallel task or start a new one if not pre-parsed.
+      if (parallelImagePromise) {
+        const imageUrl = await parallelImagePromise;
+        if (!signal.aborted && imageUrl) setLastImage(imageUrl);
+        setIsImageLoading(false);
+      } else if (imageMatch) {
         setIsImageLoading(true);
         try {
-          const imageUrl = await generateChalkboardImage(imageMatch[1], isNewEra ? eraToSet : undefined);
+          const imageUrl = await generateChalkboardImage(imageMatch[1]);
           if (!signal.aborted && imageUrl) setLastImage(imageUrl);
         } catch (e) {} finally {
           if (!signal.aborted) setIsImageLoading(false);
         }
       }
-    } catch (err) { console.error(err); } finally { if (!signal.aborted) setIsLoading(false); }
+    } catch (err) { 
+      console.error(err); 
+    } finally { 
+      if (!signal.aborted) setIsLoading(false); 
+    }
   };
 
   const startEra = (era: Era) => {
@@ -218,7 +284,7 @@ const EinsteinApp: React.FC = () => {
       {isLogsOpen && (
         <div className="logs-overlay">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-black uppercase">World Brain Registry</h2>
+            <h2 className="text-xl font-black uppercase">Laboratory Registry</h2>
             <div className="flex gap-2">
               <button onClick={() => { clearPerformanceLogs(); setLogs([]); }} className="text-xs py-1">Flush</button>
               <button onClick={() => setIsLogsOpen(false)} className="bg-red-600 text-xs py-1">Close</button>
@@ -260,6 +326,10 @@ const EinsteinApp: React.FC = () => {
           >
             {isSpeechLoading ? 'Thinking...' : isAudioPlaying ? 'Stop' : 'Listen'}
           </button>
+          
+          <button onClick={downloadConversation} disabled={messages.length === 0} className="text-[10px] uppercase min-w-[70px] opacity-80 hover:opacity-100">Save Text</button>
+          <button onClick={downloadChalkboard} disabled={!lastImage} className="text-[10px] uppercase min-w-[80px] opacity-80 hover:opacity-100">Save Image</button>
+
           <div className="relative">
             <button onClick={() => !isLoading && setIsDropdownOpen(!isDropdownOpen)} disabled={isLoading} className="text-[10px] bg-white/5 uppercase min-w-[120px] text-left">
               <span className="chapter-btn-label">{currentEra}</span> ▾
