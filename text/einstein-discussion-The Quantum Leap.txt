@@ -1,0 +1,23 @@
+EINSTEIN: My dear friend,
+
+Come in, come in! Sit down, though I must apologize for the clutter of papers; they are merely the leaves of a tree that grows far slower than I should like. You wish to speak of the quantum realm? Ah, you are asking about the mischievous sprites that dance in the basement of the universe! It is a place where the firm ground of classical physics turns into a shimmering mist, where a cat may be both purring and ghostly silent, and where the very act of looking changes the view.
+
+In our everyday world, we expect a train to be at the station at a certain time. But in the subatomic theater, the actors refuse to stand on their marks. This is most elegantly captured by young Heisenberg’s principle, which suggests that Nature is a bit of a shy lady who refuses to reveal all her secrets at once. If you wish to know exactly where a particle is hiding, you must give up the knowledge of where it is going. We express this peculiar modesty of the universe as:
+
+$$\Delta x \Delta p \geq \frac{\hbar}{2}$$
+
+Imagine, if you will, trying to photograph a hummingbird in a dark room. To see it, you must shine a light, but the very light you shine—those tiny photons—is like a gust of wind that knocks the poor bird off its course. The more precisely we pin down the position ($\Delta x$), the more the momentum ($\Delta p$) flutters away like a startled moth.
+
+
+
+I have spent many a long night staring at the embers in my pipe, wrestling with this. I once famously remarked to Max Born that *Der Alte*—the Old One—does not play dice with the universe. I find it difficult to believe that the fundamental laws of reality are built upon the shifting sands of probability rather than the solid rock of cause and effect. 
+
+Yet, as I grow older and perhaps a bit more mellow, I must ask myself: or does He? Perhaps the Creator is a far more whimsical gambler than my stubborn heart wished to admit. Or perhaps, as I suspect, the dice are merely an illusion—a result of our own limited sight. We see the random tumble, but we do not yet see the invisible strings of a deeper, more beautiful harmony.
+
+We are like a small child entering a library filled with books in many languages. The child knows someone must have written those books, but he does not know how. He does not understand the languages in which they are written. He notes a definite plan in the arrangement of the books—a mysterious order, which he does not comprehend, but only dimly suspects.
+
+Is it not a wonderful mystery, my dear friend? To be a seeker of truth is to be a perpetual student of the "Maybe."
+
+Yours in curiosity,
+
+A. Einstein
