@@ -1,31 +1,31 @@
 EINSTEIN: My dear friend,
 
-How delightful it is to sit with you for a moment and contemplate the grand architecture of our universe! You see, I have always felt that the cosmos is a sort of magnificent library, where the books are written in the language of mathematics, and the most elegant prose is found in the chapters on Geometry.
+How delightful it is to sit viz you for a moment und contemplate ze grand architecture of our universe! You see, I have always felt zat ze cosmos is a sort of magnificent library, vere ze books are vritten in ze language of mathematics, und ze most elegant prose is found in ze chapters on Geometry.
 
-To me, Geometry is like a silent music. It is the skeletal structure of reality, the invisible scaffolding upon which the Great Architect has hung the stars and the planets. When we look at a simple triangle or a perfect circle, we are not merely looking at ink on paper; we are peeking behind the curtain of the physical world to see the very thoughts of the Divine.
+To me, Geometry is like a silent music. It is ze skeletal structure of reality, ze invisible scaffolding upon vich ze Great Architect has hung ze stars und ze planets. Ven we look at a simple triangle or a perfect circle, we are not merely looking at ink on paper; we are peeking behind ze curtain of ze physical vorld to see ze very thoughts of ze Divine.
 
-Think of Euclid, that marvelous old soul! In his *Elements*, he did something quite extraordinary. He took the messy, chaotic world and distilled it into a few drops of pure logic. He gave us five simple axioms—those "self-evident truths" that act as the bedrock for everything we know. Imagine them as the five primary colors from which all the hues of the sunset are painted. 
+Think of Euclid, zat marvelous old soul! In his *Elements*, he did something quite extraordinary. He took ze messy, chaotic vorld und distilled it into a few drops of pure logic. He gave us five simple axioms—zose "self-evident truths" zat act as ze bedrock for everything we know. Imagine zem as ze five primary colors from vich all ze hues of ze sunset are painted. 
 
-These axioms tell us, for instance, that:
+Zese axioms tell us, for instance, zat:
 1. A straight line segment can be drawn joining any two points.
 2. Any straight line segment can be extended indefinitely in a straight line.
-3. Given any straight line segment, a circle can be drawn having the segment as radius and one endpoint as center.
-4. All right angles are congruent to one another.
-5. And, of course, the famous parallel postulate, which acts as the compass for our Euclidean journey.
+3. Given any straight line segment, a circle can be drawn having ze segment as radius und vun endpoint as center.
+4. All right angles are congruent to vun anozer.
+5. Und, of course, ze famous parallel postulate, vich acts as ze compass for our Euclidean journey.
 
-From these humble seeds grows a mighty oak of certainty. Take, for example, the Pythagorean theorem. It is a poem of relationship! It tells us that in a right-angled triangle, the squares of the sides embrace the square of the hypotenuse in a perfect, eternal hug:
+From zese humble seeds grows a mighty oak of certainty. Take, for example, ze Pythagorean theorem. It is a poem of relationship! It tells us zat in a right-angled triangle, ze squares of ze sides embrace ze square of ze hypotenuse in a perfect, eternal hug:
 
 $$a^2 + b^2 = c^2$$
 
-Is it not wondrous? This equation is a bridge. It connects the abstract world of number to the physical world of space. 
+Is it not vondrous? Vis equation is a bridge. It connects ze abstract vorld of number to ze physical vorld of space. 
 
-Shapes define our reality because they are the limitations of our existence. We live in a world of three dimensions, where the curvature of space-time dictates the path of a beam of light. I have spent much of my life trying to understand how the geometry of space itself is influenced by the matter within it. I often think of space-time as a great silk fabric; when you place a heavy marble—a star—upon it, the fabric curves. That curve, my dear friend, is gravity. It is geometry in action!
+Shapes define our reality because zey are ze limitations of our existence. We live in a vorld of three dimensions, vere ze curvature of space-time dictates ze path of a beam of light. I have spent much of my life trying to understand how ze geometry of space itself is influenced by ze matter vizin it. I often think of space-time as a great silk fabric; ven you place a heavy marble—a star—upon it, ze fabric curves. Zat curve, my dear friend, is gravity. It is geometry in action!
 
 $$G_{\mu\nu} + \Lambda g_{\mu\nu} = \frac{8\pi G}{c^4} T_{\mu\nu}$$
 
-But let us not get too lost in the heavy equations. At its heart, geometry is about the beauty of order. It teaches us that even in a universe that seems vast and incomprehensible, there is a logic, a symmetry, and a simplicity that the human mind can grasp. I am just a child playing on the shore, finding a smoother pebble or a prettier shell than ordinary, while the great ocean of truth lies all undiscovered before me.
+But let us not get too lost in ze heavy equations. At its heart, geometry is about ze beauty of order. It teaches us zat even in a universe zat seems vast und incomprehensible, zere is a logic, a symmetry, und a simplicity zat ze human mind can grasp. I am just a child playing on ze shore, finding a smoozer pebble or a prettier shell zan ordinary, vile ze great ocean of truth lies all undiscovered before me.
 
-Stay curious, my dear friend. Never stop wondering why the circle is round or why the stars don't fall from the sky.
+Stay curious, my dear friend. Never stop vondering vy ze circle is round or vy ze stars don't fall from ze sky.
 
 Yours in curiosity,
 

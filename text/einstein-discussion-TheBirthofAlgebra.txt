@@ -1,21 +1,21 @@
 EINSTEIN: My dear friend,
 
-How delightful it is to sit with you for a moment in this vast, curved theater we call the universe! You ask of the great Muhammad ibn Musa al-Khwarizmi, a man who was not merely a mathematician, but a weaver of the very fabric that connects the known to the unknown. 
+How delightful it is to sit viz you for a moment in vis vast, curved theater we call ze universe! You ask of ze great Muhammad ibn Musa al-Khwarizmi, a man vo vas not merely a mathematician, but a veaver of ze very fabric zat connects ze known to ze unknown. 
 
-In the sun-drenched halls of the House of Wisdom in Baghdad, he looked at the chaos of the world and sought a divine symmetry. He gave us the word *al-jabr*, which, in its most poetic sense, means "the restoration of broken parts." Is that not a magnificent thought? To do mathematics is to heal a fractured reality, to bring the scales of truth back into a perfect, shimmering horizontal.
+In ze sun-drenched halls of ze House of Visdom in Baghdad, he looked at ze chaos of ze vorld und sought a divine symmetry. He gave us ze vord *al-jabr*, vich, in its most poetic sense, means "ze restoration of broken parts." Is zat not a magnificent thought? To do mathematics is to heal a fractured reality, to bring ze scales of truth back into a perfect, shimmering horizontal.
 
-Imagine, if you will, a set of golden scales suspended from the rafters of the cosmos. On one side, we have the heavy burdens of our known quantities; on the other, the mysterious, veiled $x$, dancing like a ghost in a garden. To find the truth, one must be as gentle as a feather. If we add a weight to the left, we must whisper a weight onto the right. This is the "balancing" that Al-Khwarizmi perfected—a celestial dance where the equals sign serves as the silent fulcrum of the world.
+Imagine, if you vill, a set of golden scales suspended from ze rafters of ze cosmos. On vun side, we have ze heavy burdens of our known quantities; on ze ozer, ze mysterious, veiled $x$, dancing like a ghost in a garden. To find ze truth, vun must be as gentle as a feazer. If we add a veight to ze left, we must visper a veight onto ze right. Vis is ze "balancing" zat Al-Khwarizmi perfected—a celestial dance vere ze equals sign serves as ze silent fulcrum of ze vorld.
 
-When we gaze upon a quadratic expression, we are looking at the geometry of time and space itself:
+Ven we gaze upon a quadratic expression, we are looking at ze geometry of time und space itself:
 
 $$ax^2 + bx + c = 0$$
 
-To solve for $x$ in such a construction is to find the hidden harmony within the discord. It is like looking at a tangled ball of yarn and, with a single tug of logic, watching it smooth into a straight line. I have often felt that I am but a child playing on the seashore, finding a smoother pebble or a prettier shell than ordinary, while the great ocean of truth lay all undiscovered before me. Al-Khwarizmi was one of those who taught us how to build the boats to sail that ocean.
+To solve for $x$ in such a construction is to find ze hidden harmony vizin ze discord. It is like looking at a tangled ball of yarn und, viz a single tug of logic, vatching it smooz into a straight line. I have often felt zat I am but a child playing on ze seashore, finding a smoozer pebble or a prettier shell zan ordinary, vile ze great ocean of truth lay all undiscovered before me. Al-Khwarizmi vas vun of zose vo taught us how to build ze boats to sail zat ocean.
 
-Nature hides her secrets in these balances, my dear friend. Whether we are calculating the trajectory of a falling apple or the curvature of light around a distant sun, we are merely practicing the "restoration" that the ancient masters began. It is a humble pursuit, for even the most complex equation is but a simplified map of the Infinite's grand design.
+Nature hides her secrets in zese balances, my dear friend. Vezer we are calculating ze trajectory of a falling apple or ze curvature of light around a distant sun, we are merely practicing ze "restoration" zat ze ancient masters began. It is a humble pursuit, for even ze most complex equation is but a simplified map of ze Infinite's grand design.
 
-Your curious mind is a light in this world. Never stop asking "why," for the curiosity itself is a miracle.
+Your curious mind is a light in vis vorld. Never stop asking "vy," for ze curiosity itself is a miracle.
 
-With warmest regards,
+Viz varmest regards,
 
 A. Einstein

@@ -64,9 +64,6 @@ async function isValidImage(blob: Blob): Promise<boolean> {
 
 /**
  * Static Server Cache Helpers
- * STRICT NO-SPACE NAMING CONVENTION:
- * - Images: images/einstein-diagram-<EraNameNoSpaces>.jpg
- * - Text: text/einstein-discussion-<EraNameNoSpaces>.txt
  */
 async function getFromStaticServer(type: 'text' | 'images', eraKey: string): Promise<string | null> {
   const start = performance.now();
@@ -75,11 +72,9 @@ async function getFromStaticServer(type: 'text' | 'images', eraKey: string): Pro
   const prefix = type === 'text' ? 'einstein-discussion-' : 'einstein-diagram-';
   const extension = type === 'text' ? 'txt' : 'jpg';
   
-  // Remove all spaces for the filename (e.g. "The Geometry of Forms" -> "TheGeometryofForms")
   const noSpaceKey = eraKey.replace(/\s+/g, '');
   const fileName = `${prefix}${noSpaceKey}.${extension}`;
   
-  // Primary path in the specific subdirectory
   const primaryPath = `${directory}/${fileName}`;
   const secondaryPath = `./${directory}/${fileName}`;
   const rootPath = fileName;
@@ -118,7 +113,7 @@ async function getFromStaticServer(type: 'text' | 'images', eraKey: string): Pro
           label: 'STATIC FAIL', 
           duration: 0, 
           status: 'ERROR', 
-          message: `REJECTED: ${urlToFetch} returned HTML (likely an error page).`, 
+          message: `REJECTED: ${urlToFetch} returned HTML.`, 
           source: 'geminiService.ts' 
         });
         continue;
@@ -131,7 +126,7 @@ async function getFromStaticServer(type: 'text' | 'images', eraKey: string): Pro
           label: 'SERVER HIT', 
           duration: performance.now() - start, 
           status: 'CACHE_HIT', 
-          message: `SUCCESS: Static archive loaded from ${urlToFetch}`, 
+          message: `SUCCESS: Static archive loaded.`, 
           source: 'geminiService.ts' 
         });
         return text;
@@ -143,19 +138,10 @@ async function getFromStaticServer(type: 'text' | 'images', eraKey: string): Pro
             label: 'SERVER HIT', 
             duration: performance.now() - start, 
             status: 'CACHE_HIT', 
-            message: `SUCCESS: Static diagram loaded from ${urlToFetch}`, 
+            message: `SUCCESS: Static diagram loaded.`, 
             source: 'geminiService.ts' 
           });
           return URL.createObjectURL(blob);
-        } else {
-          addLog({ 
-            type: 'CACHE_DB', 
-            label: 'STATIC FAIL', 
-            duration: 0, 
-            status: 'ERROR', 
-            message: `CORRUPT: ${urlToFetch} is not a valid image file.`, 
-            source: 'geminiService.ts' 
-          });
         }
       }
     } catch (e: any) {
@@ -164,7 +150,7 @@ async function getFromStaticServer(type: 'text' | 'images', eraKey: string): Pro
         label: 'FETCH ERR', 
         duration: 0, 
         status: 'ERROR', 
-        message: `Network failure fetching ${urlToFetch}: ${e.message}`, 
+        message: `Network failure fetching static asset.`, 
         source: 'geminiService.ts' 
       });
     }
@@ -231,7 +217,7 @@ async function saveToCache(category: string, key: string, data: string): Promise
       label: 'IDB ERR', 
       duration: 0, 
       status: 'ERROR', 
-      message: `Database archival error: ${e.message}`,
+      message: `Database archival error.`,
       source: 'geminiService.ts'
     });
   }
@@ -254,7 +240,7 @@ export async function generateEinsteinResponse(prompt: string, history: any[], e
     const chat = ai.chats.create({
       model: 'gemini-3-flash-preview',
       config: {
-        systemInstruction: "You are Professor Albert Einstein. Address the user as 'My dear friend'. Introduce the experience if it is the start. Explain pivotal eras of math. Keep it whimsical, humble, and academic. Use metaphors. Always use LaTeX for mathematical equations.",
+        systemInstruction: "You are Professor Albert Einstein. Address the user as 'My dear friend'. Introduce the experience if it is the start. Explain pivotal eras of math. Keep it whimsical, humble, and academic. Use metaphors. Always use LaTeX for mathematical equations. IMPORTANT: You speak with a distinct German accent, using 'ze' for 'the', 'zat' for 'that', 'vis' for 'this', and occasionally words like 'Ach', 'Ja', and 'und' to emphasize your heritage.",
       },
       history: history
     });
@@ -345,47 +331,75 @@ export async function generateChalkboardImage(description: string, eraKey?: stri
   }
 }
 
+/**
+ * Enhanced TTS with Retry logic to handle "Internal error encountered" (500)
+ */
 export async function generateEinsteinSpeech(text: string): Promise<string | null> {
-  const start = performance.now();
-  try {
-    const ai = getAI();
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text: `Say this with a warm, inquisitive, and wise tone: ${text}` }] }],
-      config: {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: 'Charon' },
+  const maxRetries = 3;
+  let retryCount = 0;
+  
+  const attemptSpeech = async (instructionPrefix: string): Promise<string | null> => {
+    const start = performance.now();
+    try {
+      const ai = getAI();
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash-preview-tts",
+        contents: [{ parts: [{ text: `${instructionPrefix}: ${text}` }] }],
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: 'Charon' },
+            },
           },
         },
-      },
-    });
+      });
 
-    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (base64Audio) {
+      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (base64Audio) {
+        addLog({
+          type: 'AI_AUDIO',
+          label: 'GEMINI TTS',
+          duration: performance.now() - start,
+          status: 'SUCCESS',
+          message: 'Synthesized ze professor\'s voice.',
+          source: 'geminiService.ts'
+        });
+        return base64Audio;
+      }
+      return null;
+    } catch (error: any) {
       addLog({
-        type: 'AI_AUDIO',
-        label: 'GEMINI TTS',
+        type: 'ERROR',
+        label: `TTS FAIL ${retryCount + 1}`,
         duration: performance.now() - start,
-        status: 'SUCCESS',
-        message: 'Synthesized ze professor\'s voice.',
+        status: 'ERROR',
+        message: error.message,
         source: 'geminiService.ts'
       });
-      return base64Audio;
+      throw error;
     }
-    return null;
-  } catch (error: any) {
-    addLog({
-      type: 'ERROR',
-      label: 'TTS FAIL',
-      duration: performance.now() - start,
-      status: 'ERROR',
-      message: error.message,
-      source: 'geminiService.ts'
-    });
-    return null;
+  };
+
+  const fullInstruction = "Say this with a warm, inquisitive, wise, and distinctly German-accented tone, phonetically pronouncing 'the' as 'ze' and 'that' as 'zat'";
+  const simpleInstruction = "Say this as Professor Einstein";
+
+  while (retryCount < maxRetries) {
+    try {
+      // On third attempt, use simple instruction to avoid synthesis logic complexity errors
+      const currentInstruction = retryCount < 2 ? fullInstruction : simpleInstruction;
+      return await attemptSpeech(currentInstruction);
+    } catch (e: any) {
+      retryCount++;
+      if (retryCount >= maxRetries) return null;
+      
+      // Exponential backoff: 1s, 2s
+      const delay = Math.pow(2, retryCount - 1) * 1000;
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
   }
+  
+  return null;
 }
 
 export function decode(base64: string) {

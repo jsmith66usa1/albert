@@ -1,24 +1,24 @@
 EINSTEIN: My dear friend,
 
-How delightful it is to find your mind wandering through the celestial garden of mathematics! It is a place where the flowers are made of logic and the fragrance is the very essence of truth. I am but a simple clerk of the cosmos, yet I find no greater joy than contemplating the architectural wonders left behind by those who saw the universe not as a collection of things, but as a tapestry of ideas.
+How delightful it is to find your mind vandering through ze celestial garden of mathematics! It is a place vere ze flowers are made of logic und ze fragrance is ze very essence of truth. I am but a simple clerk of ze cosmos, yet I find no greater joy zan contemplating ze architectural vonders left behind by zose vo saw ze universe not as a collection of things, but as a tapestry of ideas.
 
-Let us speak first of Leonhard Euler, a man whose mind was as nimble as a mountain goat leaping across the crags of infinity. He gave us a jewel, a small symphony compressed into a handful of symbols. I refer, of course, to what many of us consider the most beautiful equation in all of human thought:
+Let us speak first of Leonhard Euler, a man vose mind vas as nimble as a mountain goat leaping across ze crags of infinity. He gave us a jewel, a small symphony compressed into a handful of symbols. I refer, of course, to vat many of us consider ze most beautiful equation in all of human thought:
 
 $$e^{i\pi} + 1 = 0$$
 
-Is it not magnificent? It brings together five of the most fundamental constants of the universe—the base of natural logarithms $e$, the imaginary unit $i$, the ratio of a circle’s circumference to its diameter $\pi$, the additive identity $0$, and the multiplicative identity $1$—into a single, silent harmony. It is as if the universe whispered its most profound secret into Euler's ear while he was drinking his morning coffee.
+Is it not magnificent? It brings togezer five of ze most fundamental constants of ze universe—ze base of natural logarithms $e$, ze imaginary unit $i$, ze ratio of a circle’s circumference to its diameter $\pi$, ze additive identity $0$, und ze multiplicative identity $1$—into a single, silent harmony. It is as if ze universe vispered its most profound secret into Euler's ear vile he vas drinking his morning coffee.
 
-But, my dear friend, we must not let our feet remain stuck to the flat, dusty floor of Euclidean geometry. For centuries, we believed that a straight line was the shortest path and that parallel lines were like shy lovers who would never, ever meet. But what if the floor itself is breathing? What if the paper upon which we draw our triangles is not flat, but curved like the shell of a cosmic snail?
+But, my dear friend, we must not let our feet remain stuck to ze flat, dusty floor of Euclidean geometry. For centuries, we believed zat a straight line vas ze shortest pah und zat parallel lines vere like shy lovers vo vould never, ever meet. But vat if ze floor itself is breazing? Vat if ze paper upon vich we draw our triangles is not flat, but curved like ze shell of a cosmic snail?
 
-In the realm of non-Euclidean curves, the rules of the playground change. On a sphere, for instance, the sum of the angles of a triangle is greater than $180^\circ$. This is not a mistake of the ruler, but a property of the surface itself! I began to wonder: if a beetle crawls across a curved branch, it thinks it is moving in a straight line, yet the branch dictates its path. Could it be that our very space—the vast emptiness between the stars—is similarly warped?
+In ze realm of non-Euclidean curves, ze rules of ze playground change. On a sphere, for instance, ze sum of ze angles of a triangle is greater zan $180^\circ$. Vis is not a mistake of ze ruler, but a property of ze surface itself! I began to vonder: if a beetle crawls across a curved branch, it thinks it is moving in a straight line, yet ze branch dictates its pah. Could it be zat our very space—ze vast emptiness between ze stars—is similarly varped?
 
-I have spent many a sleepless night pondering this. Gravity, you see, is not a mysterious tug-of-war between masses, but rather the geometry of the void. Imagine placing a heavy bowling ball upon a soft velvet blanket; the blanket sags, and any smaller marble nearby will naturally roll toward the center. This is the essence of my field equations:
+I have spent many a sleepless night pondering vis. Gravity, you see, is not a mysterious tug-of-var between masses, but razer ze geometry of ze void. Imagine placing a heavy bovling ball upon a soft velvet blanket; ze blanket sags, und any smaller marble nearby vill naturally roll toward ze center. Vis is ze essence of my field equations:
 
 $$G_{\mu\nu} + \Lambda g_{\mu\nu} = \frac{8\pi G}{c^4} T_{\mu\nu}$$
 
-Here, we see that matter and energy tell space how to curve, and the curvature of space tells matter how to move. We live in a four-dimensional manifold where time and space are woven together, dancing to the rhythm of geometry.
+Here, we see zat matter und energy tell space how to curve, und ze curvature of space tells matter how to move. We live in a four-dimensional manifold vere time und space are voven togezer, dancing to ze rhyhm of geometry.
 
-Do not be discouraged if it feels as though your head is spinning like a top. To understand the universe is to realize that we are all children playing with pebbles on the shore of a vast, curved ocean. We must remain humble, for the more we learn, the more we realize how vast the mystery truly is.
+Do not be discouraged if it feels as though your head is spinning like a top. To understand ze universe is to realize zat we are all children playing viz pebbles on ze shore of a vast, curved ocean. We must remain humble, for ze more we learn, ze more we realize how vast ze mystery truly is.
 
 Your ever-curious friend,
 

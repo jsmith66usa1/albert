@@ -1,22 +1,22 @@
 EINSTEIN: My dear friend,
 
-How delightful it is to contemplate the restless nature of our universe with you! You see, the cosmos is not a static painting hung upon a wall, but rather a grand, unfolding symphony. To understand this music, we must learn to read the notes of *change*. I often find myself sitting with my violin, thinking that just as a melody is the transition from one vibration to the next, the physical world is a continuous transition from one state to another.
+How delightful it is to contemplate ze restless nature of our universe viz you! You see, ze cosmos is not a static painting hung upon a vall, but razer a grand, unfolding symphony. To understand vis music, we must learn to read ze notes of *change*. I often find myself sitting viz my violin, thinking zat just as a melody is ze transition from vun vibration to ze next, ze physical vorld is a continuous transition from vun state to anozer.
 
-In the days of Sir Isaac Newton—a giant upon whose shoulders I have frequently found myself perched, much to my own vertigo—the world was viewed through the lens of the falling apple. When that fruit detaches from its branch, it does not merely "move"; it accelerates! It converses with gravity. To capture this fleeting moment, we use the derivative. It is the mathematical equivalent of a photograph taken with an infinitely fast shutter speed. We ask, "At this precise heartbeat, how is the position changing?"
+In ze days of Sir Isaac Newton—a giant upon vose shoulders I have frequently found myself perched, much to my own vertigo—ze vorld vas vieved through ze lens of ze falling apple. Ven zat fruit detaches from its branch, it does not merely "move"; it accelerates! It converses viz gravity. To capture vis fleeting moment, we use ze derivative. It is ze mathematical equivalent of a photograph taken viz an infinitely fast shutter speed. We ask, "At vis precise heartbeat, how is ze position changing?"
 
-We express this local whisper of change as:
+We express vis local visper of change as:
 $$\frac{dy}{dx} = \lim_{h \to 0} \frac{f(x+h) - f(x)}{h}$$
 
-This, my dear friend, is the slope of the tangent, the very direction the apple "wishes" to go at a single point in time. 
+Vis, my dear friend, is ze slope of ze tangent, ze very direction ze apple "vishes" to go at a single point in time. 
 
-But what of the stars? They do not merely fall; they drift in a magnificent flux across the curvature of space-time. To understand the whole journey—to sum up all those tiny, infinitesimal moments of change into a grand total—we must use the integral. It is the art of stitching together the fragments of a broken mirror to see the entire reflection of the sky.
+But vat of ze stars? Zey do not merely fall; zey drift in a magnificent flux across ze curvature of space-time. To understand ze vhole journey—to sum up all zose tiny, infinitesimal moments of change into a grand total—we must use ze integral. It is ze art of stitching togezer ze fragments of a broken mirror to see ze entire reflection of ze sky.
 
-We write this gathering of whispers as:
+We vrite vis gahering of vispers as:
 $$\int_{a}^{b} f(x) \, dx$$
 
-Calculus allows us to see that the falling apple and the orbiting planet are dancing to the same sheet music. One is a local tumble, the other a celestial waltz, yet both are governed by the same laws of flux. I am but a curious child playing on the seashore, finding a smoother pebble or a prettier shell than ordinary, whilst the great ocean of truth lies all undiscovered before me.
+Calculus allows us to see zat ze falling apple und ze orbiting planet are dancing to ze same sheet music. Vun is a local tumble, ze ozer a celestial valtz, yet boze are governed by ze same lavs of flux. I am but a curious child playing on ze seashore, finding a smoozer pebble or a prettier shell zan ordinary, vilst ze great ocean of truth lies all undiscovered before me.
 
-Nature hides her secrets in the language of mathematics, but she is never malicious. She simply waits for us to be clever enough to ask the right questions. Now, if you will excuse me, I believe my pipe has gone out, and my hair has reached a level of entropy that even I find difficult to calculate!
+Nature hides her secrets in ze language of mathematics, but she is never malicious. She simply vaits for us to be clever enough to ask ze right questions. Now, if you vill excuse me, I believe my pipe has gone out, und my hair has reached a level of entropy zat even I find difficult to calculate!
 
 Yours in curiosity,
 
