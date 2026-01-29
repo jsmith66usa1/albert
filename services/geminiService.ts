@@ -1,10 +1,10 @@
 import { GoogleGenAI, Modality } from "@google/genai";
-import { ref, get, set, Database } from "firebase/database";
+import { doc, getDoc, setDoc, Firestore } from "firebase/firestore";
 import { LogEntry } from "../types";
 import { initWorldBrain, runDiagnosticPing } from "./firebase";
 
 let performanceLogs: LogEntry[] = [];
-let db: Database | null = null;
+let db: Firestore | null = null;
 
 export const getPerformanceLogs = () => [...performanceLogs];
 export const clearPerformanceLogs = () => { performanceLogs = []; };
@@ -20,7 +20,7 @@ const addLog = (entry: Omit<LogEntry, 'id' | 'timestamp'>) => {
   window.dispatchEvent(new CustomEvent('performance_log_updated', { detail: newLog }));
 };
 
-// Initialize World Brain on module load
+// Initialize World Brain (Firestore) on module load
 initWorldBrain(addLog).then(instance => {
   db = instance;
 });
@@ -41,13 +41,13 @@ async function getFromCache(category: string, key: string, dataType: string): Pr
   const start = performance.now();
   const storageKey = `discovery_v12_${category}_${key}`;
   
-  // 1. Try World Brain (Global Sync)
+  // 1. Try World Brain (Firestore Global Sync)
   if (db) {
     try {
-      const dbRef = ref(db, `world_brain_v12/${category}/${key}`);
-      const snapshot = await get(dbRef);
-      if (snapshot.exists()) {
-        const val = snapshot.val();
+      const docRef = doc(db, 'world_brain_v12', `${category}_${key}`);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const val = docSnap.data().value;
         addLog({ type: 'CACHE_DB', label: `GLOBAL HIT`, duration: performance.now() - start, status: 'CACHE_HIT', message: `Shared ${dataType} retrieved from World Brain.`, source: 'geminiService.ts:51' });
         
         try {
@@ -57,7 +57,7 @@ async function getFromCache(category: string, key: string, dataType: string): Pr
       }
     } catch (e: any) {
       await runDiagnosticPing(addLog);
-      addLog({ type: 'ERROR', label: 'WORLD BRAIN ERR', duration: performance.now() - start, status: 'ERROR', message: `Read failure: ${e.message}`, source: 'geminiService.ts:60' });
+      addLog({ type: 'ERROR', label: 'WORLD BRAIN ERR', duration: performance.now() - start, status: 'ERROR', message: `Cloud read failure: ${e.message}`, source: 'geminiService.ts:60' });
     }
   }
 
@@ -94,14 +94,14 @@ async function saveToCache(category: string, key: string, data: string): Promise
     }
   }
   
-  // Attempt World Brain Save
+  // Attempt World Brain (Firestore) Save
   if (db) {
     try {
-      await set(ref(db, `world_brain_v12/${category}/${key}`), data);
+      await setDoc(doc(db, 'world_brain_v12', `${category}_${key}`), { value: data, timestamp: Date.now() });
       addLog({ type: 'CACHE_DB', label: 'GLOBAL SAVE', duration: performance.now() - start, status: 'SUCCESS', message: `Knowledge uploaded to World Brain.`, source: 'geminiService.ts:102' });
     } catch (e: any) {
       await runDiagnosticPing(addLog);
-      addLog({ type: 'ERROR', label: 'WORLD BRAIN ERR', duration: performance.now() - start, status: 'ERROR', message: `Write failure: ${e.message}`, source: 'geminiService.ts:105' });
+      addLog({ type: 'ERROR', label: 'WORLD BRAIN ERR', duration: performance.now() - start, status: 'ERROR', message: `Cloud write failure: ${e.message}`, source: 'geminiService.ts:105' });
     }
   }
 }
