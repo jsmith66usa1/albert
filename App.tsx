@@ -113,8 +113,6 @@ const EinsteinApp: React.FC = () => {
 
   const downloadChalkboard = () => {
     if (!lastImage) return;
-    
-    // Convert to JPEG before downloading
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
@@ -123,11 +121,9 @@ const EinsteinApp: React.FC = () => {
       canvas.height = img.height;
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        // JPEG doesn't support transparency, so we fill with black background (chalkboard style)
         ctx.fillStyle = "#000000";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0);
-        
         const jpegUrl = canvas.toDataURL('image/jpeg', 0.9);
         const a = document.createElement('a');
         a.href = jpegUrl;
@@ -218,7 +214,7 @@ const EinsteinApp: React.FC = () => {
       parts: [{ text: m.text }]
     }));
 
-    // Optimistic Image Generation: If it's a known Era, start the image task immediately in parallel.
+    // Start Era-specific parallel loading if switch occurs
     let parallelImagePromise: Promise<string | null> | null = null;
     if (eraToSet) {
       const chapter = CHAPTERS.find(c => c.id === eraToSet);
@@ -231,8 +227,6 @@ const EinsteinApp: React.FC = () => {
 
     try {
       const textPromise = generateEinsteinResponse(promptText, history, isNewEra ? eraToSet : undefined);
-      
-      // Wait for the text response first to maintain conversational flow.
       const responseText = await textPromise;
       if (signal.aborted) return;
       
@@ -242,15 +236,17 @@ const EinsteinApp: React.FC = () => {
       setMessages(prev => [...prev, { role: 'einstein', text: safeResponse, timestamp: Date.now() }]);
       if (eraToSet) setCurrentEra(eraToSet);
 
-      // Handle the image result from the parallel task or start a new one if not pre-parsed.
       if (parallelImagePromise) {
         const imageUrl = await parallelImagePromise;
         if (!signal.aborted && imageUrl) setLastImage(imageUrl);
         setIsImageLoading(false);
-      } else if (imageMatch) {
+      } else {
+        // This is a follow-up query (typed, deeper math, or archive)
         setIsImageLoading(true);
         try {
-          const imageUrl = await generateChalkboardImage(imageMatch[1]);
+          // Use AI's suggested tag if present, otherwise fall back to a contextual sketch based on user prompt.
+          const description = imageMatch ? imageMatch[1] : `A chalkboard calculation und sketch about: ${promptText.substring(0, 60)}`;
+          const imageUrl = await generateChalkboardImage(description);
           if (!signal.aborted && imageUrl) setLastImage(imageUrl);
         } catch (e) {} finally {
           if (!signal.aborted) setIsImageLoading(false);
@@ -374,7 +370,7 @@ const EinsteinApp: React.FC = () => {
       <footer className="footer">
         <div className="max-w-3xl mx-auto w-full">
           <div className="scroll-row no-scrollbar">
-            <button onClick={() => handleAction(`Professor, show me the deeper mathematics.`)} disabled={isLoading} className="text-[10px] bg-white/5 rounded-full px-5 py-2">Deeper Math</button>
+            <button onClick={() => handleAction(`Professor, show me the deeper mathematics und provide a specific sketch for vis concept.`)} disabled={isLoading} className="text-[10px] bg-white/5 rounded-full px-5 py-2">Deeper Math</button>
             <div className="relative">
               <button onClick={() => !isLoading && setIsFaqOpen(!isFaqOpen)} disabled={isLoading} className="text-[10px] bg-white/5 rounded-full px-5 py-2">Archive ▾</button>
               {isFaqOpen && (

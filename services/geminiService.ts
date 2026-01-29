@@ -5,6 +5,7 @@ let performanceLogs: LogEntry[] = [];
 const DB_NAME = 'EinsteinLaboratoryDB';
 const STORE_NAME = 'CosmicCache';
 const DB_VERSION = 1;
+let dbInstance: IDBDatabase | null = null;
 
 export const getPerformanceLogs = () => [...performanceLogs];
 export const clearPerformanceLogs = () => { performanceLogs = []; };
@@ -21,6 +22,7 @@ const addLog = (entry: Omit<LogEntry, 'id' | 'timestamp'>) => {
 };
 
 const openDB = (): Promise<IDBDatabase> => {
+  if (dbInstance) return Promise.resolve(dbInstance);
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onupgradeneeded = () => {
@@ -29,7 +31,10 @@ const openDB = (): Promise<IDBDatabase> => {
         db.createObjectStore(STORE_NAME);
       }
     };
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      dbInstance = request.result;
+      resolve(dbInstance);
+    };
     request.onerror = () => reject(request.error);
   });
 };
@@ -46,36 +51,23 @@ async function generateCacheKey(input: string): Promise<string> {
   return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
 }
 
-/**
- * Validates if the fetched blob is a valid image via magic numbers.
- */
 async function isValidImage(blob: Blob): Promise<boolean> {
   if (blob.size < 10) return false;
   const buffer = await blob.slice(0, 4).arrayBuffer();
   const header = new Uint8Array(buffer);
-  
-  // JPEG: FF D8 FF
   if (header[0] === 0xFF && header[1] === 0xD8 && header[2] === 0xFF) return true;
-  // PNG: 89 50 4E 47
   if (header[0] === 0x89 && header[1] === 0x50 && header[2] === 0x4E && header[3] === 0x47) return true;
-  
   return false;
 }
 
-/**
- * Static Server Cache Helpers with enhanced path probing for deployed environments.
- */
 async function getFromStaticServer(type: 'text' | 'images', eraKey: string): Promise<string | null> {
   const start = performance.now();
-  
   const directory = type === 'text' ? 'text' : 'images';
   const prefix = type === 'text' ? 'einstein-discussion-' : 'einstein-diagram-';
   const extension = type === 'text' ? 'txt' : 'jpg';
-  
   const noSpaceKey = eraKey.replace(/\s+/g, '');
   const fileName = `${prefix}${noSpaceKey}.${extension}`;
   
-  // Build a base path that accounts for potential deployment subdirectories
   const base = window.location.origin + window.location.pathname.split('/').slice(0, -1).join('/');
   const normalizedBase = base.endsWith('/') ? base.slice(0, -1) : base;
 
@@ -89,41 +81,11 @@ async function getFromStaticServer(type: 'text' | 'images', eraKey: string): Pro
 
   for (const urlToFetch of pathsToTry) {
     try {
-      addLog({ 
-        type: 'CACHE_DB', 
-        label: 'STATIC PROBE', 
-        duration: 0, 
-        status: 'SUCCESS', 
-        message: `Probing static library: ${urlToFetch}`, 
-        source: 'geminiService.ts' 
-      });
-
       const response = await fetch(urlToFetch, { cache: 'no-cache' });
-      
-      if (!response.ok) {
-        addLog({ 
-          type: 'CACHE_DB', 
-          label: 'STATIC MISS', 
-          duration: 0, 
-          status: 'ERROR', 
-          message: `404: Not found at ${urlToFetch}`, 
-          source: 'geminiService.ts' 
-        });
-        continue;
-      }
+      if (!response.ok) continue;
 
       const contentType = response.headers.get('content-type') || '';
-      if (contentType.includes('text/html')) {
-        addLog({ 
-          type: 'CACHE_DB', 
-          label: 'STATIC FAIL', 
-          duration: 0, 
-          status: 'ERROR', 
-          message: `REJECTED: ${urlToFetch} returned HTML.`, 
-          source: 'geminiService.ts' 
-        });
-        continue;
-      }
+      if (contentType.includes('text/html')) continue;
 
       if (type === 'text') {
         const text = await response.text();
@@ -150,47 +112,20 @@ async function getFromStaticServer(type: 'text' | 'images', eraKey: string): Pro
           return URL.createObjectURL(blob);
         }
       }
-    } catch (e: any) {
-      addLog({ 
-        type: 'ERROR', 
-        label: 'FETCH ERR', 
-        duration: 0, 
-        status: 'ERROR', 
-        message: `Network failure fetching asset: ${e.message}`, 
-        source: 'geminiService.ts' 
-      });
-    }
+    } catch (e) {}
   }
-  
   return null;
 }
 
-async function getFromCache(category: string, key: string, dataType: string): Promise<any> {
-  const start = performance.now();
+async function getFromCache(category: string, key: string): Promise<any> {
   const storageKey = `discovery_v12_${category}_${key}`;
-  
   try {
     const db = await openDB();
     const transaction = db.transaction(STORE_NAME, 'readonly');
     const store = transaction.objectStore(STORE_NAME);
     const request = store.get(storageKey);
-
     return new Promise((resolve) => {
-      request.onsuccess = () => {
-        if (request.result) {
-          addLog({ 
-            type: 'CACHE_DB', 
-            label: `IDB HIT`, 
-            duration: performance.now() - start, 
-            status: 'CACHE_HIT', 
-            message: `Retrieved ${dataType} from local laboratory storage.`, 
-            source: 'geminiService.ts' 
-          });
-          resolve(request.result);
-        } else {
-          resolve(null);
-        }
-      };
+      request.onsuccess = () => resolve(request.result || null);
       request.onerror = () => resolve(null);
     });
   } catch (e) {
@@ -200,45 +135,24 @@ async function getFromCache(category: string, key: string, dataType: string): Pr
 
 async function saveToCache(category: string, key: string, data: string): Promise<void> {
   if (!data || data.length < 5) return;
-  const start = performance.now();
   const storageKey = `discovery_v12_${category}_${key}`;
-  
   try {
     const db = await openDB();
     const transaction = db.transaction(STORE_NAME, 'readwrite');
     const store = transaction.objectStore(STORE_NAME);
     store.put(data, storageKey);
-
-    addLog({ 
-      type: 'CACHE_DB', 
-      label: 'IDB SAVE', 
-      duration: performance.now() - start, 
-      status: 'SUCCESS', 
-      message: `Content archived in local laboratory database.`, 
-      source: 'geminiService.ts' 
-    });
-  } catch (e: any) {
-    addLog({ 
-      type: 'SYSTEM', 
-      label: 'IDB ERR', 
-      duration: 0, 
-      status: 'ERROR', 
-      message: `Database archival error.`,
-      source: 'geminiService.ts'
-    });
-  }
+  } catch (e) {}
 }
 
 export async function generateEinsteinResponse(prompt: string, history: any[], eraKey?: string): Promise<string> {
   const start = performance.now();
-  
   if (eraKey) {
     const staticResult = await getFromStaticServer('text', eraKey);
     if (staticResult) return staticResult;
   }
 
   const cacheKey = await generateCacheKey(prompt + JSON.stringify(history));
-  const cached = await getFromCache('text', cacheKey, 'text');
+  const cached = await getFromCache('text', cacheKey);
   if (cached) return cached;
 
   try {
@@ -246,14 +160,13 @@ export async function generateEinsteinResponse(prompt: string, history: any[], e
     const chat = ai.chats.create({
       model: 'gemini-3-flash-preview',
       config: {
-        systemInstruction: "You are Professor Albert Einstein. Address the user as 'My dear friend'. Introduce the experience if it is the start. Explain pivotal eras of math. Keep it whimsical, humble, and academic. Use metaphors. Always use LaTeX for mathematical equations. IMPORTANT: You speak with a distinct German accent, using 'ze' for 'the', 'zat' for 'that', 'vis' for 'this', and occasionally words like 'Ach', 'Ja', and 'und' to emphasize your heritage.",
+        systemInstruction: "You are Professor Albert Einstein. Address the user as 'My dear friend'. Introduce the experience if it is the start. Explain pivotal eras of math. Keep it whimsical, humble, and academic. Use metaphors. Always use LaTeX for mathematical equations. IMPORTANT: You speak with a distinct German accent. Whenever the user asks for more detail, deeper math, or a follow-up question, you MUST provide a [IMAGE: description] tag at the very end of your response to illustrate the mathematical concept on your chalkboard. Be creative with the chalkboard descriptions.",
       },
       history: history
     });
 
     const response = await chat.sendMessage({ message: prompt });
     const text = response.text || "Ach, ze universe remains silent.";
-    
     await saveToCache('text', cacheKey, text);
     
     addLog({
@@ -264,7 +177,6 @@ export async function generateEinsteinResponse(prompt: string, history: any[], e
       message: 'Consulted ze relative wisdom of ze stars.',
       source: 'geminiService.ts'
     });
-    
     return text;
   } catch (error: any) {
     addLog({
@@ -275,20 +187,19 @@ export async function generateEinsteinResponse(prompt: string, history: any[], e
       message: error.message,
       source: 'geminiService.ts'
     });
-    return "My dear friend, ze cosmic connection is slightly warped. Let us try again in a moment.";
+    return "My dear friend, ze cosmic connection is slightly warped. Let us try again.";
   }
 }
 
 export async function generateChalkboardImage(description: string, eraKey?: string): Promise<string | null> {
   const start = performance.now();
-
   if (eraKey) {
     const staticImg = await getFromStaticServer('images', eraKey);
     if (staticImg) return staticImg;
   }
 
   const cacheKey = await generateCacheKey(description);
-  const cached = await getFromCache('image', cacheKey, 'image');
+  const cached = await getFromCache('image', cacheKey);
   if (cached) return cached;
 
   try {
@@ -318,7 +229,7 @@ export async function generateChalkboardImage(description: string, eraKey?: stri
         label: 'GEMINI IMAGE',
         duration: performance.now() - start,
         status: 'SUCCESS',
-        message: 'Successfully sketched on ze chalkboard via AI.',
+        message: 'Successfully sketched on ze chalkboard.',
         source: 'geminiService.ts'
       });
       return imageUrl;
@@ -337,9 +248,6 @@ export async function generateChalkboardImage(description: string, eraKey?: stri
   }
 }
 
-/**
- * Enhanced TTS with Retry logic to handle "Internal error encountered" (500)
- */
 export async function generateEinsteinSpeech(text: string): Promise<string | null> {
   const maxRetries = 3;
   let retryCount = 0;
@@ -392,19 +300,15 @@ export async function generateEinsteinSpeech(text: string): Promise<string | nul
 
   while (retryCount < maxRetries) {
     try {
-      // On third attempt, use simple instruction to avoid synthesis logic complexity errors
       const currentInstruction = retryCount < 2 ? fullInstruction : simpleInstruction;
       return await attemptSpeech(currentInstruction);
     } catch (e: any) {
       retryCount++;
       if (retryCount >= maxRetries) return null;
-      
-      // Exponential backoff: 1s, 2s
       const delay = Math.pow(2, retryCount - 1) * 1000;
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
-  
   return null;
 }
 
@@ -427,7 +331,6 @@ export async function decodeAudioData(
   const dataInt16 = new Int16Array(data.buffer);
   const frameCount = dataInt16.length / numChannels;
   const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
-
   for (let channel = 0; channel < numChannels; channel++) {
     const channelData = buffer.getChannelData(channel);
     for (let i = 0; i < frameCount; i++) {
