@@ -14,8 +14,6 @@ $$i\hbar \frac{\partial}{\partial t} \Psi(\mathbf{r},t) = \hat{H} \Psi(\mathbf{r
 
 In this world, an electron is not a point, but a ghost—a wave of "perhaps" and "maybe." How do we stitch the smooth silk of gravity to the fuzzy wool of the quantum? It is like trying to compose a symphony where the violins play a continuous melody while the drums beat in unpredictable, discrete pops!
 
-
-
 We seek a "Unified Field Theory," a single set of equations that would reveal that the "big" and the "small" are but two sides of the same golden coin. We want to show that the curvature of the cosmos and the spin of a particle are both manifestations of a single, underlying reality—perhaps a geometry even more subtle than the one I first imagined.
 
 I have often thought that God does not play dice with the universe, yet the quantum mechanics tell us He is a most enthusiastic gambler! Perhaps the bridge we seek is not built of stone, but of a deeper understanding of information and connection. We are like children who have found a few pieces of a jigsaw puzzle and are trying to guess the picture of the entire cathedral.

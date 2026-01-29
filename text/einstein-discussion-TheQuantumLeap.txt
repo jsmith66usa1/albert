@@ -8,8 +8,6 @@ $$\Delta x \Delta p \geq \frac{\hbar}{2}$$
 
 Imagine, if you will, trying to photograph a hummingbird in a dark room. To see it, you must shine a light, but the very light you shine—those tiny photons—is like a gust of wind that knocks the poor bird off its course. The more precisely we pin down the position ($\Delta x$), the more the momentum ($\Delta p$) flutters away like a startled moth.
 
-
-
 I have spent many a long night staring at the embers in my pipe, wrestling with this. I once famously remarked to Max Born that *Der Alte*—the Old One—does not play dice with the universe. I find it difficult to believe that the fundamental laws of reality are built upon the shifting sands of probability rather than the solid rock of cause and effect. 
 
 Yet, as I grow older and perhaps a bit more mellow, I must ask myself: or does He? Perhaps the Creator is a far more whimsical gambler than my stubborn heart wished to admit. Or perhaps, as I suspect, the dice are merely an illusion—a result of our own limited sight. We see the random tumble, but we do not yet see the invisible strings of a deeper, more beautiful harmony.

@@ -1,7 +1,0 @@
-Ach, look at how far we have come from such simple beginnings! Imagine, my friend, the first humans looking at the moon and making a scratch on a bone for every night that passed. They were capturing time itself!
-
-In ancient Egypt, the "rope stretchers" used geometry to reclaim their land after the Nile flooded. They discovered that a triangle with sides of 3, 4, and 5 units always created a perfect right angle. They were finding the hidden order of the earth! 
-
-The area of their triangles, $A = \frac{1}{2}bh$, was more than math—it was a way to bring harmony back to a chaotic world.
-
-[IMAGE: A chalkboard sketch of ancient Egyptian pyramids and measuring ropes]

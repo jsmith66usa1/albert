@@ -20,8 +20,6 @@ Where $m_0$ is the rest mass—and if that mass were to vanish into the void of 
 
 The ancient Brahmi numerals, the ancestors of our own, initially represented this concept as a simple dot, the *bindu*. It was a seed from which the tree of infinity grew. In later inscriptions, it evolved into the familiar circle we use today, a shape with no beginning and no end, much like the universe itself.
 
-
-
 The "void" is powerful because it is the point of equilibrium. It is the silence between the notes that makes the music audible. As we approach the infinitesimal, we find the infinite:
 
 $$\lim_{x \to 0} \frac{1}{x} = \infty$$

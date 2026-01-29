@@ -20,7 +20,6 @@ const addLog = (entry: Omit<LogEntry, 'id' | 'timestamp'>) => {
   window.dispatchEvent(new CustomEvent('performance_log_updated', { detail: newLog }));
 };
 
-// IndexedDB Helper for secondary caching
 const openDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -48,48 +47,129 @@ async function generateCacheKey(input: string): Promise<string> {
 }
 
 /**
+ * Validates if the fetched blob is a valid image via magic numbers.
+ */
+async function isValidImage(blob: Blob): Promise<boolean> {
+  if (blob.size < 10) return false;
+  const buffer = await blob.slice(0, 4).arrayBuffer();
+  const header = new Uint8Array(buffer);
+  
+  // JPEG: FF D8 FF
+  if (header[0] === 0xFF && header[1] === 0xD8 && header[2] === 0xFF) return true;
+  // PNG: 89 50 4E 47
+  if (header[0] === 0x89 && header[1] === 0x50 && header[2] === 0x4E && header[3] === 0x47) return true;
+  
+  return false;
+}
+
+/**
  * Static Server Cache Helpers
- * Text: /text/einstein-discussion-<EraName>.txt
- * Images: /images/einstein-diagram-<EraName>.jpg
+ * STRICT NO-SPACE NAMING CONVENTION:
+ * - Images: images/einstein-diagram-<EraNameNoSpaces>.jpg
+ * - Text: text/einstein-discussion-<EraNameNoSpaces>.txt
  */
 async function getFromStaticServer(type: 'text' | 'images', eraKey: string): Promise<string | null> {
   const start = performance.now();
-  const extension = type === 'text' ? 'txt' : 'jpg';
-  const directory = type === 'text' ? '/text/' : '/images/';
+  
+  const directory = type === 'text' ? 'text' : 'images';
   const prefix = type === 'text' ? 'einstein-discussion-' : 'einstein-diagram-';
+  const extension = type === 'text' ? 'txt' : 'jpg';
   
-  // Construct primary path following exact user request
-  const fileName = `${prefix}${eraKey}.${extension}`;
-  const rawPath = `${directory}${fileName}`;
-  const finalPath = rawPath.replace(/ /g, '%20');
-
-  // Also check root as secondary fallback in case directory doesn't exist but file does
-  const rootPath = `/${fileName}`.replace(/ /g, '%20');
+  // Remove all spaces for the filename (e.g. "The Geometry of Forms" -> "TheGeometryofForms")
+  const noSpaceKey = eraKey.replace(/\s+/g, '');
+  const fileName = `${prefix}${noSpaceKey}.${extension}`;
   
-  // Fallback for files starting with 'T' (Introduction/Foundations templates)
-  const templatePath = `${directory}${prefix}T${eraKey}.${extension}`.replace(/ /g, '%20');
+  // Primary path in the specific subdirectory
+  const primaryPath = `${directory}/${fileName}`;
+  const secondaryPath = `./${directory}/${fileName}`;
+  const rootPath = fileName;
 
-  const pathsToTry = [finalPath, templatePath, rootPath];
+  const pathsToTry = [primaryPath, secondaryPath, rootPath];
 
-  for (const path of pathsToTry) {
+  for (const urlToFetch of pathsToTry) {
+    addLog({ 
+      type: 'CACHE_DB', 
+      label: 'STATIC PROBE', 
+      duration: 0, 
+      status: 'SUCCESS', 
+      message: `Probing static library: ${urlToFetch}`, 
+      source: 'geminiService.ts' 
+    });
+
     try {
-      const response = await fetch(path);
-      if (response.ok) {
-        const result = type === 'text' ? await response.text() : path;
+      const response = await fetch(urlToFetch, { cache: 'no-cache' });
+      
+      if (!response.ok) {
         addLog({ 
           type: 'CACHE_DB', 
-          label: `SERVER HIT`, 
-          duration: performance.now() - start, 
-          status: 'CACHE_HIT', 
-          message: `Retrieved ${type} from static cache: ${path}`, 
+          label: 'STATIC MISS', 
+          duration: 0, 
+          status: 'ERROR', 
+          message: `404: Not found at ${urlToFetch}`, 
           source: 'geminiService.ts' 
         });
-        return result;
+        continue;
       }
-    } catch (e) {
-      // Continue to next path
+
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('text/html')) {
+        addLog({ 
+          type: 'CACHE_DB', 
+          label: 'STATIC FAIL', 
+          duration: 0, 
+          status: 'ERROR', 
+          message: `REJECTED: ${urlToFetch} returned HTML (likely an error page).`, 
+          source: 'geminiService.ts' 
+        });
+        continue;
+      }
+
+      if (type === 'text') {
+        const text = await response.text();
+        addLog({ 
+          type: 'CACHE_DB', 
+          label: 'SERVER HIT', 
+          duration: performance.now() - start, 
+          status: 'CACHE_HIT', 
+          message: `SUCCESS: Static archive loaded from ${urlToFetch}`, 
+          source: 'geminiService.ts' 
+        });
+        return text;
+      } else {
+        const blob = await response.blob();
+        if (await isValidImage(blob)) {
+          addLog({ 
+            type: 'CACHE_DB', 
+            label: 'SERVER HIT', 
+            duration: performance.now() - start, 
+            status: 'CACHE_HIT', 
+            message: `SUCCESS: Static diagram loaded from ${urlToFetch}`, 
+            source: 'geminiService.ts' 
+          });
+          return URL.createObjectURL(blob);
+        } else {
+          addLog({ 
+            type: 'CACHE_DB', 
+            label: 'STATIC FAIL', 
+            duration: 0, 
+            status: 'ERROR', 
+            message: `CORRUPT: ${urlToFetch} is not a valid image file.`, 
+            source: 'geminiService.ts' 
+          });
+        }
+      }
+    } catch (e: any) {
+      addLog({ 
+        type: 'ERROR', 
+        label: 'FETCH ERR', 
+        duration: 0, 
+        status: 'ERROR', 
+        message: `Network failure fetching ${urlToFetch}: ${e.message}`, 
+        source: 'geminiService.ts' 
+      });
     }
   }
+  
   return null;
 }
 
@@ -111,7 +191,7 @@ async function getFromCache(category: string, key: string, dataType: string): Pr
             label: `IDB HIT`, 
             duration: performance.now() - start, 
             status: 'CACHE_HIT', 
-            message: `Retrieved ${dataType} from IndexedDB laboratory storage.`, 
+            message: `Retrieved ${dataType} from local laboratory storage.`, 
             source: 'geminiService.ts' 
           });
           resolve(request.result);
@@ -142,7 +222,7 @@ async function saveToCache(category: string, key: string, data: string): Promise
       label: 'IDB SAVE', 
       duration: performance.now() - start, 
       status: 'SUCCESS', 
-      message: `Knowledge saved to IndexedDB laboratory storage.`, 
+      message: `Content archived in local laboratory database.`, 
       source: 'geminiService.ts' 
     });
   } catch (e: any) {
@@ -151,7 +231,7 @@ async function saveToCache(category: string, key: string, data: string): Promise
       label: 'IDB ERR', 
       duration: 0, 
       status: 'ERROR', 
-      message: `Failed to archive data: ${e.message}`,
+      message: `Database archival error: ${e.message}`,
       source: 'geminiService.ts'
     });
   }
@@ -160,107 +240,118 @@ async function saveToCache(category: string, key: string, data: string): Promise
 export async function generateEinsteinResponse(prompt: string, history: any[], eraKey?: string): Promise<string> {
   const start = performance.now();
   
-  // 1. Check Static Server Cache
   if (eraKey) {
     const staticResult = await getFromStaticServer('text', eraKey);
     if (staticResult) return staticResult;
   }
 
-  // 2. Check IndexedDB Cache
-  const cacheKey = eraKey ? await generateCacheKey(`era_${eraKey}`) : await generateCacheKey(JSON.stringify({ prompt, history }));
-  const cached = await getFromCache('response', cacheKey, 'thought');
+  const cacheKey = await generateCacheKey(prompt + JSON.stringify(history));
+  const cached = await getFromCache('text', cacheKey, 'text');
   if (cached) return cached;
 
-  // 3. Fallback to Gemini AI
   try {
     const ai = getAI();
-    const response = await ai.models.generateContent({
+    const chat = ai.chats.create({
       model: 'gemini-3-flash-preview',
-      contents: [...history, { role: 'user', parts: [{ text: prompt }] }],
       config: {
-        systemInstruction: "You are Professor Albert Einstein. Address the user as 'My dear friend'. Be whimsical, humble, and academic. Use metaphors. If you generate an image tag, use the format [IMAGE: description]. Ensure your response contains equations in LaTeX format.",
-        temperature: 0.8,
-      }
+        systemInstruction: "You are Professor Albert Einstein. Address the user as 'My dear friend'. Introduce the experience if it is the start. Explain pivotal eras of math. Keep it whimsical, humble, and academic. Use metaphors. Always use LaTeX for mathematical equations.",
+      },
+      history: history
     });
 
-    const text = response.text || "Ach, ze universe remains a mystery.";
-    await saveToCache('response', cacheKey, text);
+    const response = await chat.sendMessage({ message: prompt });
+    const text = response.text || "Ach, ze universe remains silent.";
     
-    addLog({ type: 'AI_TEXT', label: 'RELATIVITY', duration: performance.now() - start, status: 'SUCCESS', message: 'New thought materialized from the ether.', source: 'geminiService.ts' });
+    await saveToCache('text', cacheKey, text);
+    
+    addLog({
+      type: 'AI_TEXT',
+      label: 'GEMINI TEXT',
+      duration: performance.now() - start,
+      status: 'SUCCESS',
+      message: 'Consulted ze relative wisdom of ze stars.',
+      source: 'geminiService.ts'
+    });
+    
     return text;
-  } catch (e: any) {
-    addLog({ type: 'ERROR', label: 'GEN FAIL', duration: performance.now() - start, status: 'ERROR', message: `Thought failure: ${e.message}`, source: 'geminiService.ts' });
-    return `Ach! A disturbance: ${e.message}`;
+  } catch (error: any) {
+    addLog({
+      type: 'ERROR',
+      label: 'AI FAIL',
+      duration: performance.now() - start,
+      status: 'ERROR',
+      message: error.message,
+      source: 'geminiService.ts'
+    });
+    return "My dear friend, ze cosmic connection is slightly warped. Let us try again in a moment.";
   }
 }
 
-export async function generateChalkboardImage(prompt: string, eraKey?: string): Promise<string | null> {
+export async function generateChalkboardImage(description: string, eraKey?: string): Promise<string | null> {
   const start = performance.now();
-  
-  // 1. Check Static Server Cache
+
   if (eraKey) {
-    const staticResult = await getFromStaticServer('images', eraKey);
-    if (staticResult) return staticResult;
+    const staticImg = await getFromStaticServer('images', eraKey);
+    if (staticImg) return staticImg;
   }
 
-  // 2. Check IndexedDB Cache
-  const cacheKey = eraKey ? await generateCacheKey(`img_${eraKey}`) : await generateCacheKey(prompt);
-  const cached = await getFromCache('image', cacheKey, 'visual');
+  const cacheKey = await generateCacheKey(description);
+  const cached = await getFromCache('image', cacheKey, 'image');
   if (cached) return cached;
 
-  // 3. Fallback to Gemini AI
   try {
     const ai = getAI();
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
-      contents: [{ 
-        parts: [{ text: `A simple, clear chalkboard sketch: ${prompt}. White chalk on black, scientific diagram style.` }] 
-      }],
-      config: { 
-        imageConfig: { aspectRatio: '16:9' }
+      contents: {
+        parts: [{ text: `A chalkboard sketch: ${description}. White chalk on a dark dusty blackboard. Highly detailed mathematical and scientific diagram style.` }]
+      },
+      config: {
+        imageConfig: { aspectRatio: "1:1" }
       }
     });
 
     let imageUrl = null;
-    const parts = response.candidates?.[0]?.content?.parts;
-    if (parts) {
-      for (const part of parts) {
-        if (part.inlineData) {
-          imageUrl = `data:image/png;base64,${part.inlineData.data}`;
-          break;
-        }
+    for (const part of response.candidates[0].content.parts) {
+      if (part.inlineData) {
+        imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+        break;
       }
     }
 
     if (imageUrl) {
-      try {
-        await saveToCache('image', cacheKey, imageUrl);
-      } catch (cacheErr) {}
-      addLog({ type: 'AI_IMAGE', label: 'OPTICS', duration: performance.now() - start, status: 'SUCCESS', message: 'Visual observation manifested on chalkboard.', source: 'geminiService.ts' });
-    } else {
-      addLog({ type: 'ERROR', label: 'OPTICS FAIL', duration: performance.now() - start, status: 'ERROR', message: 'Model returned content but no image data found.', source: 'geminiService.ts' });
+      await saveToCache('image', cacheKey, imageUrl);
+      addLog({
+        type: 'AI_IMAGE',
+        label: 'GEMINI IMAGE',
+        duration: performance.now() - start,
+        status: 'SUCCESS',
+        message: 'Successfully sketched on ze chalkboard via AI.',
+        source: 'geminiService.ts'
+      });
+      return imageUrl;
     }
-    return imageUrl;
-  } catch (e: any) {
-    addLog({ type: 'ERROR', label: 'OPTICS FAIL', duration: performance.now() - start, status: 'ERROR', message: `Sketching failure: ${e.message}`, source: 'geminiService.ts' });
+    return null;
+  } catch (error: any) {
+    addLog({
+      type: 'ERROR',
+      label: 'IMAGE FAIL',
+      duration: performance.now() - start,
+      status: 'ERROR',
+      message: error.message,
+      source: 'geminiService.ts'
+    });
     return null;
   }
 }
 
 export async function generateEinsteinSpeech(text: string): Promise<string | null> {
   const start = performance.now();
-  const cleanText = text.replace(/\[IMAGE:.*?\]/g, '').trim();
-  if (!cleanText) return null;
-
-  const cacheKey = await generateCacheKey(`voice_${cleanText.substring(0, 100)}`);
-  const cached = await getFromCache('speech', cacheKey, 'vocal');
-  if (cached) return cached;
-
   try {
     const ai = getAI();
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text: `Speak as Einstein: ${cleanText}` }] }],
+      contents: [{ parts: [{ text: `Say this with a warm, inquisitive, and wise tone: ${text}` }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
@@ -273,17 +364,31 @@ export async function generateEinsteinSpeech(text: string): Promise<string | nul
 
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (base64Audio) {
-      await saveToCache('speech', cacheKey, base64Audio);
-      addLog({ type: 'AI_AUDIO', label: 'HARMONY', duration: performance.now() - start, status: 'SUCCESS', message: 'Vocal frequencies captured.', source: 'geminiService.ts' });
+      addLog({
+        type: 'AI_AUDIO',
+        label: 'GEMINI TTS',
+        duration: performance.now() - start,
+        status: 'SUCCESS',
+        message: 'Synthesized ze professor\'s voice.',
+        source: 'geminiService.ts'
+      });
+      return base64Audio;
     }
-    return base64Audio || null;
-  } catch (e: any) {
-    addLog({ type: 'ERROR', label: 'HARMONY FAIL', duration: performance.now() - start, status: 'ERROR', message: `Vocal failure: ${e.message}`, source: 'geminiService.ts' });
+    return null;
+  } catch (error: any) {
+    addLog({
+      type: 'ERROR',
+      label: 'TTS FAIL',
+      duration: performance.now() - start,
+      status: 'ERROR',
+      message: error.message,
+      source: 'geminiService.ts'
+    });
     return null;
   }
 }
 
-export function decode(base64: string): Uint8Array {
+export function decode(base64: string) {
   const binaryString = atob(base64);
   const len = binaryString.length;
   const bytes = new Uint8Array(len);

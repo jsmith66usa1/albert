@@ -18,8 +18,6 @@ $$G_{\mu\nu} + \Lambda g_{\mu\nu} = \frac{8\pi G}{c^4} T_{\mu\nu}$$
 
 Here, we see that matter and energy tell space how to curve, and the curvature of space tells matter how to move. We live in a four-dimensional manifold where time and space are woven together, dancing to the rhythm of geometry.
 
-
-
 Do not be discouraged if it feels as though your head is spinning like a top. To understand the universe is to realize that we are all children playing with pebbles on the shore of a vast, curved ocean. We must remain humble, for the more we learn, the more we realize how vast the mystery truly is.
 
 Your ever-curious friend,

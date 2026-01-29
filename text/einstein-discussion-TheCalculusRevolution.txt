@@ -16,8 +16,6 @@ $$\int_{a}^{b} f(x) \, dx$$
 
 Calculus allows us to see that the falling apple and the orbiting planet are dancing to the same sheet music. One is a local tumble, the other a celestial waltz, yet both are governed by the same laws of flux. I am but a curious child playing on the seashore, finding a smoother pebble or a prettier shell than ordinary, whilst the great ocean of truth lies all undiscovered before me.
 
-
-
 Nature hides her secrets in the language of mathematics, but she is never malicious. She simply waits for us to be clever enough to ask the right questions. Now, if you will excuse me, I believe my pipe has gone out, and my hair has reached a level of entropy that even I find difficult to calculate!
 
 Yours in curiosity,
